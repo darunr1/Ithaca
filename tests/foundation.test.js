@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { readConfig } from '../backend/config.js';
 import { createApp } from '../backend/app.js';
 import { createRepository } from '../backend/repositories/records.js';
-import { contributionPoints, validateReviewer, weekStart } from '../backend/services/scoring.js';
+import { contributionPoints, semesterOf, validateReviewer, weekStart } from '../backend/services/scoring.js';
+import { universityContributorsPipeline, universityTotalsPipeline } from '../database/aggregations.js';
 import { validateExtraction, validateFit } from '../ai-service/schemas.js';
 import { createGeminiService } from '../ai-service/gemini.js';
 import { extractNotes } from '../backend/middleware/uploads.js';
@@ -81,7 +82,7 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
   for (const label of ['Ithaca Home', 'Athena', 'Kleos Ledger', 'The Court', 'Bow']) assert.ok(html.includes(label));
   for (const path of ['/app.js', '/styles.css', '/shared/api.js', '/core/home.js', '/recruiting/court.js']) assert.equal((await fetch(base + path)).status, 200);
   const all = await get('/api/clubs/club-rocketry/rankings?range=all');
-  assert.deepEqual(all.data.rows.map(r => r.points), [190, 130, 100]);
+  assert.deepEqual(all.data.rows.map(r => r.points), [280, 250, 130]);
   const week = await get('/api/clubs/club-rocketry/rankings?range=week');
   assert.equal(week.data.rows[0].points, 70);
   const discovery = await get('/api/recruiter/profiles');
@@ -105,16 +106,73 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
     const views = await Promise.all([
       import('../frontend/core/home.js'), import('../frontend/core/athena.js'),
       import('../frontend/core/kleos.js'), import('../frontend/recruiting/court.js'),
-      import('../frontend/recruiting/bow.js')
+      import('../frontend/recruiting/bow.js'), import('../frontend/core/member.js')
     ]);
-    const output = await Promise.all(views.map(module => Object.values(module)[0]()));
+    const renderers = [views[0].renderHome, views[1].renderAthena, views[2].renderKleos, views[3].renderCourt, views[4].renderBow, () => views[5].renderMember('member-leo')];
+    const output = await Promise.all(renderers.map(render => render()));
     for (const page of output) { assert.ok(page.includes('<h1>')); assert.ok(!page.includes('undefined')); }
-    assert.ok(output[0].includes('420'));
+    assert.ok(output[0].includes('660'));
+    assert.ok(!output[0].includes('Meridian'), 'Home stays scoped to Aster clubs');
+    assert.ok(output[2].includes('href="#member/member-leo"'), 'ranking names link to member stats');
+    assert.ok(output[2].includes('Semester by semester'), 'default demo identity is an officer');
+    assert.ok(output[2].includes('Universities by contributions'));
+    assert.ok(output[5].includes('Leo Marin') && output[5].includes('Fall 2026') && output[5].includes('Spring 2026'));
     assert.ok(output[1].includes('Approve · planned'));
     assert.ok(!output[3].includes('Sana Reed'));
     assert.ok((await views[2].renderKleos('week')).includes('70'));
     assert.ok((await views[3].renderCourt('no-such-skill')).includes('No opted-in profiles'));
   } finally { globalThis.fetch = originalFetch; }
+});
+test('Kleos Ledger: member stats, officer semesters, member requests, university leaderboards', async t => {
+  const server = createApp({ config }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const call = (path, { as, method = 'GET', body } = {}) => fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(as ? { 'X-Demo-Member': as } : {}) }, body: body && JSON.stringify(body) });
+  // Member stats
+  const leo = (await (await call('/api/members/member-leo')).json()).data.stats;
+  assert.equal(leo.totalPoints, 280); assert.equal(leo.contributionCount, 3); assert.equal(leo.attendanceCount, 4);
+  assert.deepEqual(leo.clubs[0], { clubId: 'club-rocketry', name: 'Aster Rocketry', officer: true, rank: 1, of: 3, points: 280 });
+  assert.deepEqual(leo.semesters.map(s => [s.label, s.contributions, s.points]), [['Fall 2026', 2, 190], ['Spring 2026', 1, 90]]);
+  assert.equal(leo.skills[0].skill, 'C firmware');
+  // Officer-only semester view
+  assert.equal((await call('/api/clubs/club-rocketry/semesters')).status, 401);
+  assert.equal((await call('/api/clubs/club-rocketry/semesters', { as: 'member-sana' })).status, 403);
+  assert.equal((await call('/api/clubs/club-rocketry/semesters', { as: 'member-nora' })).status, 403, 'officer of another club');
+  const history = (await (await call('/api/clubs/club-rocketry/semesters', { as: 'member-iris' })).json()).data;
+  assert.deepEqual(history.semesters.map(s => [s.label, s.contributions]), [['Fall 2026', 4], ['Spring 2026', 3], ['Fall 2025', 1]]);
+  assert.equal(history.semesters[0].members[0].memberId, 'member-leo');
+  // Member contribution requests
+  const valid = { description: 'Rewrote the parachute deployment checklist.', evidence: 'Session 4 notes: Sana walked the team through the new checklist.', skills: ['Recovery systems'], suggestedLevel: 'low', date: '2026-11-10' };
+  assert.equal((await call('/api/clubs/club-rocketry/contribution-requests', { method: 'POST', body: valid })).status, 401);
+  assert.equal((await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-iris', method: 'POST', body: valid })).status, 403, 'officers do not file member requests');
+  assert.equal((await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-ada', method: 'POST', body: valid })).status, 403, 'non-members cannot request');
+  for (const bad of [{ ...valid, description: 'short' }, { ...valid, date: '2026-02-30' }, { ...valid, date: '2999-01-01' }, { ...valid, points: 90 }, { ...valid, suggestedLevel: 'custom' }]) {
+    assert.equal((await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana', method: 'POST', body: bad })).status, 400, JSON.stringify(bad));
+  }
+  const created = await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana', method: 'POST', body: valid });
+  assert.equal(created.status, 201);
+  const draft = (await created.json()).data;
+  assert.equal(draft.memberId, 'member-sana'); assert.equal(draft.status, 'pending'); assert.equal(draft.origin, 'member-request'); assert.ok(!('points' in draft));
+  const mine = (await (await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana' })).json()).data;
+  assert.ok(mine.some(d => d.id === draft.id));
+  assert.equal((await (await call('/api/clubs/club-rocketry/semesters', { as: 'member-leo' })).json()).data.pendingRequests, 1);
+  assert.equal((await (await call('/api/members/member-sana')).json()).data.stats.totalPoints, 130, 'requests award no points');
+  // University leaderboards
+  const totals = (await (await call('/api/universities')).json()).data;
+  assert.deepEqual(totals.map(u => [u.universityId, u.contributions, u.rank]), [['uni-aster', 10, 1], ['uni-meridian', 5, 2]]);
+  const aster = (await (await call('/api/universities/uni-aster/leaderboard')).json()).data;
+  assert.deepEqual(aster.rows.slice(0, 2).map(r => [r.memberId, r.contributions, r.rank]), [['member-leo', 3, 1], ['member-iris', 3, 2]]);
+  assert.ok(aster.rows.every(r => r.clubs.length && r.memberId !== 'member-ada'));
+  assert.equal((await call('/api/universities/uni-missing/leaderboard')).status, 404);
+});
+test('university leaderboard pipelines match the demo repository contract', () => {
+  const contributors = universityContributorsPipeline('uni-aster');
+  assert.deepEqual(contributors[0], { $match: { universityId: 'uni-aster', status: 'approved' } });
+  assert.ok(contributors.some(stage => stage.$sort?.contributions === -1));
+  assert.ok(universityTotalsPipeline().some(stage => stage.$lookup?.from === 'universities'));
+  assert.deepEqual(['2026-01-15', '2026-06-01', '2026-08-24', '2026-12-31'].map(d => semesterOf(d).label), ['Spring 2026', 'Summer 2026', 'Fall 2026', 'Fall 2026']);
+  assert.throws(() => semesterOf('2026-13-01'));
 });
 test('Atlas failures propagate instead of returning fixtures', async t => {
   const db = { collection() { throw new Error('Simulated outage'); }, async command() { throw new Error('Simulated outage'); } };

@@ -16,3 +16,11 @@ export function weekStart(date) {
   day.setUTCDate(day.getUTCDate() - (day.getUTCDay() + 6) % 7);
   return day.toISOString().slice(0, 10);
 }
+// Academic terms by calendar month: Spring Jan–May, Summer Jun–Jul, Fall Aug–Dec.
+// `key` sorts chronologically (e.g. "2026-3" is Fall 2026).
+export function semesterOf(date) {
+  weekStart(date);
+  const year = Number(date.slice(0, 4)), month = Number(date.slice(5, 7));
+  const [term, order] = month <= 5 ? ['Spring', 1] : month <= 7 ? ['Summer', 2] : ['Fall', 3];
+  return { key: `${year}-${order}`, label: `${term} ${year}` };
+}
