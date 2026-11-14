@@ -1,0 +1,489 @@
+{
+  "GET /api/health": {
+    "data": {
+      "status": "ok",
+      "database": "disabled",
+      "ai": "mock",
+      "authentication": "not-implemented"
+    },
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  },
+  "GET /api/clubs": {
+    "data": [
+      {
+        "id": "club-rocketry",
+        "universityId": "uni-aster",
+        "name": "Aster Rocketry",
+        "category": "Avionics & flight systems",
+        "project": "Project Argos · flight computer",
+        "officerIds": [
+          "member-iris",
+          "member-leo"
+        ]
+      },
+      {
+        "id": "club-electric",
+        "universityId": "uni-aster",
+        "name": "Aster Electric Racing",
+        "category": "Battery systems & mobility",
+        "project": "Helios EV · battery pack",
+        "officerIds": [
+          "member-nora"
+        ]
+      },
+      {
+        "id": "club-robotics",
+        "universityId": "uni-aster",
+        "name": "Aster Robotics",
+        "category": "Autonomy & sensing",
+        "project": "Talos · autonomous rover",
+        "officerIds": [
+          "member-eli"
+        ]
+      }
+    ],
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  },
+  "GET /api/clubs/club-rocketry/roster": {
+    "data": [
+      {
+        "universityId": "uni-aster",
+        "id": "member-iris",
+        "name": "Iris Vale",
+        "major": "Electrical Engineering",
+        "year": 4,
+        "clubIds": [
+          "club-rocketry"
+        ],
+        "visibleToCompanies": true,
+        "openToNewClubs": false,
+        "skills": [
+          "Avionics",
+          "PCB design"
+        ]
+      },
+      {
+        "universityId": "uni-aster",
+        "id": "member-leo",
+        "name": "Leo Marin",
+        "major": "Computer Engineering",
+        "year": 3,
+        "clubIds": [
+          "club-rocketry"
+        ],
+        "visibleToCompanies": true,
+        "openToNewClubs": true,
+        "skills": [
+          "C firmware",
+          "CAN",
+          "Hardware validation"
+        ]
+      },
+      {
+        "universityId": "uni-aster",
+        "id": "member-sana",
+        "name": "Sana Reed",
+        "major": "Computer Science",
+        "year": 2,
+        "clubIds": [
+          "club-rocketry"
+        ],
+        "visibleToCompanies": false,
+        "openToNewClubs": false,
+        "skills": [
+          "Sensor integration",
+          "Python"
+        ]
+      }
+    ],
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  },
+  "GET /api/clubs/club-rocketry/sessions": {
+    "data": [
+      {
+        "id": "session-1",
+        "clubId": "club-rocketry",
+        "date": "2026-10-24",
+        "week": "2026-10-19",
+        "title": "Sensor bench tests",
+        "takenBy": "member-iris"
+      },
+      {
+        "id": "session-2",
+        "clubId": "club-rocketry",
+        "date": "2026-10-31",
+        "week": "2026-10-26",
+        "title": "Avionics integration",
+        "takenBy": "member-iris"
+      },
+      {
+        "id": "session-3",
+        "clubId": "club-rocketry",
+        "date": "2026-11-07",
+        "week": "2026-11-02",
+        "title": "Flight computer validation",
+        "takenBy": "member-iris"
+      },
+      {
+        "id": "session-4",
+        "clubId": "club-rocketry",
+        "date": "2026-11-14",
+        "week": "2026-11-09",
+        "title": "Launch readiness review",
+        "takenBy": "member-iris"
+      }
+    ],
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  },
+  "GET /api/clubs/club-rocketry/drafts": {
+    "data": [
+      {
+        "id": "draft-1",
+        "clubId": "club-rocketry",
+        "sessionId": "session-4",
+        "memberId": "member-sana",
+        "description": "Documented sensor calibration steps for the next avionics team.",
+        "skills": [
+          "Documentation",
+          "Sensor integration"
+        ],
+        "suggestedLevel": "low",
+        "source": {
+          "id": "notes-4-draft",
+          "excerpt": "Sana Reed documented sensor calibration steps for the next avionics team.",
+          "fictional": true
+        },
+        "status": "pending",
+        "origin": "mock"
+      }
+    ],
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  },
+  "GET /api/members/member-leo": {
+    "data": {
+      "member": {
+        "universityId": "uni-aster",
+        "id": "member-leo",
+        "name": "Leo Marin",
+        "major": "Computer Engineering",
+        "year": 3,
+        "clubIds": [
+          "club-rocketry"
+        ],
+        "visibleToCompanies": true,
+        "openToNewClubs": true,
+        "skills": [
+          "C firmware",
+          "CAN",
+          "Hardware validation"
+        ]
+      },
+      "contributions": [
+        {
+          "id": "contribution-4",
+          "clubId": "club-rocketry",
+          "universityId": "uni-aster",
+          "memberId": "member-leo",
+          "sessionId": "session-4",
+          "date": "2026-11-14",
+          "week": "2026-11-09",
+          "description": "Validated the firmware fix across 200 simulated flight cycles.",
+          "skills": [
+            "Hardware validation",
+            "C firmware"
+          ],
+          "level": "medium",
+          "points": 60,
+          "status": "approved",
+          "approvedBy": "member-iris",
+          "source": {
+            "id": "notes-4",
+            "title": "Launch readiness review",
+            "excerpt": "Leo Marin: Validated the firmware fix across 200 simulated flight cycles.",
+            "fictional": true
+          },
+          "createdAt": "2026-11-14T20:00:00.000Z"
+        },
+        {
+          "id": "contribution-1",
+          "clubId": "club-rocketry",
+          "universityId": "uni-aster",
+          "memberId": "member-leo",
+          "sessionId": "session-1",
+          "date": "2026-10-24",
+          "week": "2026-10-19",
+          "description": "Reproduced and fixed the CAN frame timeout in avionics firmware.",
+          "skills": [
+            "C firmware",
+            "CAN"
+          ],
+          "level": "high",
+          "points": 90,
+          "status": "approved",
+          "approvedBy": "member-iris",
+          "source": {
+            "id": "notes-1",
+            "title": "Sensor bench tests",
+            "excerpt": "Leo Marin: Reproduced and fixed the CAN frame timeout in avionics firmware.",
+            "fictional": true
+          },
+          "createdAt": "2026-10-24T20:00:00.000Z"
+        }
+      ],
+      "attendance": [
+        {
+          "id": "attendance-session-1-member-leo",
+          "sessionId": "session-1",
+          "clubId": "club-rocketry",
+          "memberId": "member-leo",
+          "date": "2026-10-24",
+          "week": "2026-10-19",
+          "points": 10,
+          "recordedBy": "member-iris"
+        },
+        {
+          "id": "attendance-session-2-member-leo",
+          "sessionId": "session-2",
+          "clubId": "club-rocketry",
+          "memberId": "member-leo",
+          "date": "2026-10-31",
+          "week": "2026-10-26",
+          "points": 10,
+          "recordedBy": "member-iris"
+        },
+        {
+          "id": "attendance-session-3-member-leo",
+          "sessionId": "session-3",
+          "clubId": "club-rocketry",
+          "memberId": "member-leo",
+          "date": "2026-11-07",
+          "week": "2026-11-02",
+          "points": 10,
+          "recordedBy": "member-iris"
+        },
+        {
+          "id": "attendance-session-4-member-leo",
+          "sessionId": "session-4",
+          "clubId": "club-rocketry",
+          "memberId": "member-leo",
+          "date": "2026-11-14",
+          "week": "2026-11-09",
+          "points": 10,
+          "recordedBy": "member-iris"
+        }
+      ]
+    },
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  },
+  "GET /api/clubs/club-rocketry/rankings?range=all": {
+    "data": {
+      "range": "all",
+      "start": "0000-01-01",
+      "rows": [
+        {
+          "memberId": "member-leo",
+          "points": 190,
+          "name": "Leo Marin",
+          "rank": 1
+        },
+        {
+          "memberId": "member-iris",
+          "points": 130,
+          "name": "Iris Vale",
+          "rank": 2
+        },
+        {
+          "memberId": "member-sana",
+          "points": 100,
+          "name": "Sana Reed",
+          "rank": 3
+        }
+      ],
+      "caveat": "Activity within this club; not a measure of engineering ability."
+    },
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  },
+  "GET /api/recruiter/profiles": {
+    "data": [
+      {
+        "member": {
+          "id": "member-iris",
+          "name": "Iris Vale",
+          "major": "Electrical Engineering",
+          "year": 4,
+          "skills": [
+            "Avionics",
+            "PCB design"
+          ],
+          "universityId": "uni-aster",
+          "clubIds": [
+            "club-rocketry"
+          ]
+        },
+        "contributions": [
+          {
+            "id": "contribution-3",
+            "clubId": "club-rocketry",
+            "universityId": "uni-aster",
+            "memberId": "member-iris",
+            "sessionId": "session-3",
+            "date": "2026-11-07",
+            "week": "2026-11-02",
+            "description": "Designed the flight computer PCB power stage and completed its review.",
+            "skills": [
+              "PCB design",
+              "Avionics"
+            ],
+            "level": "high",
+            "points": 90,
+            "status": "approved",
+            "approvedBy": "member-leo",
+            "source": {
+              "id": "notes-3",
+              "title": "Flight computer validation",
+              "excerpt": "Iris Vale: Designed the flight computer PCB power stage and completed its review.",
+              "fictional": true
+            },
+            "createdAt": "2026-11-07T20:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "member": {
+          "id": "member-leo",
+          "name": "Leo Marin",
+          "major": "Computer Engineering",
+          "year": 3,
+          "skills": [
+            "C firmware",
+            "CAN",
+            "Hardware validation"
+          ],
+          "universityId": "uni-aster",
+          "clubIds": [
+            "club-rocketry"
+          ]
+        },
+        "contributions": [
+          {
+            "id": "contribution-4",
+            "clubId": "club-rocketry",
+            "universityId": "uni-aster",
+            "memberId": "member-leo",
+            "sessionId": "session-4",
+            "date": "2026-11-14",
+            "week": "2026-11-09",
+            "description": "Validated the firmware fix across 200 simulated flight cycles.",
+            "skills": [
+              "Hardware validation",
+              "C firmware"
+            ],
+            "level": "medium",
+            "points": 60,
+            "status": "approved",
+            "approvedBy": "member-iris",
+            "source": {
+              "id": "notes-4",
+              "title": "Launch readiness review",
+              "excerpt": "Leo Marin: Validated the firmware fix across 200 simulated flight cycles.",
+              "fictional": true
+            },
+            "createdAt": "2026-11-14T20:00:00.000Z"
+          },
+          {
+            "id": "contribution-1",
+            "clubId": "club-rocketry",
+            "universityId": "uni-aster",
+            "memberId": "member-leo",
+            "sessionId": "session-1",
+            "date": "2026-10-24",
+            "week": "2026-10-19",
+            "description": "Reproduced and fixed the CAN frame timeout in avionics firmware.",
+            "skills": [
+              "C firmware",
+              "CAN"
+            ],
+            "level": "high",
+            "points": 90,
+            "status": "approved",
+            "approvedBy": "member-iris",
+            "source": {
+              "id": "notes-1",
+              "title": "Sensor bench tests",
+              "excerpt": "Leo Marin: Reproduced and fixed the CAN frame timeout in avionics firmware.",
+              "fictional": true
+            },
+            "createdAt": "2026-10-24T20:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "member": {
+          "id": "member-nora",
+          "name": "Nora Ash",
+          "major": "Electrical Engineering",
+          "year": 3,
+          "skills": [
+            "Battery-management firmware",
+            "CAN"
+          ],
+          "universityId": "uni-aster",
+          "clubIds": [
+            "club-electric"
+          ]
+        },
+        "contributions": []
+      },
+      {
+        "member": {
+          "id": "member-eli",
+          "name": "Eli Rowan",
+          "major": "Mechanical Engineering",
+          "year": 3,
+          "skills": [
+            "Robotics software",
+            "Sensor integration"
+          ],
+          "universityId": "uni-aster",
+          "clubIds": [
+            "club-robotics"
+          ]
+        },
+        "contributions": []
+      }
+    ],
+    "meta": {
+      "mode": "demo",
+      "fictional": true,
+      "foundation": true
+    }
+  }
+}

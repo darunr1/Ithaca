@@ -1,0 +1,7 @@
+import { api } from '../shared/api.js';
+import { e, heading, notice } from '../shared/ui.js';
+export async function renderAthena() {
+  const { data: drafts } = await api('/clubs/club-rocketry/drafts');
+  return `${heading('ATHENA / YOUR GUIDE', 'Turn meeting notes into recognition.', 'Evidence-backed drafts, with a human at every decision.')}${notice('Preview only: upload, extraction, editing, approval, and rejection are not connected yet. The Gemini service foundation is ready for Darun.')}
+    <div class="columns"><section class="panel"><p class="eyebrow">01 / ADD THE RECORD</p><h2>Start with the source.</h2><div class="upload-placeholder"><span>↥</span><h3>Meeting notes belong here</h3><p>Text and text-based PDFs · up to 5 MB</p><button disabled>Upload notes · coming next</button></div><p class="body-copy">Athena will preserve excerpts, match names to the club roster, and flag uncertainty. No draft awards points.</p></section><section class="panel"><p class="eyebrow">02 / OFFICER REVIEW</p><h2>Proposed contributions</h2>${drafts.map(d => `<article class="draft"><span class="pill">${e(d.origin)} draft · ${e(d.status)}</span><h3>${e(d.description)}</h3><p>Member: ${e(d.memberId)} · Suggested level: ${e(d.suggestedLevel)}</p><blockquote>${e(d.source.excerpt)}</blockquote><div class="actions"><button disabled>Approve · planned</button><button class="secondary" disabled>Edit or reject · planned</button></div></article>`).join('') || '<p>No drafts yet.</p>'}</section></div>`;
+}
