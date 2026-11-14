@@ -1,5 +1,7 @@
 # API contract v0.1
 
+The authenticated document and RAG extension is documented in [ATHENE_API.md](ATHENE_API.md). It uses `/api/projects/:projectId/athene`, scoped by existing club ID. The foundation contracts below remain unchanged.
+
 Base: `/api`. JSON, camelCase, string IDs. All requests use same-origin URLs. `Content-Type: application/json` except the planned upload form. Success envelope:
 
 ```json

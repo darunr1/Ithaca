@@ -1,11 +1,36 @@
 {
-  "name": "ithaca", "version": "0.1.0", "private": true, "type": "module",
+  "name": "ithaca",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "description": "Engineering contributions, remembered. HackUTA foundation.",
-  "engines": { "node": ">=22.13.0" },
-  "scripts": {
-    "dev": "node --watch backend/server.js", "start": "node backend/server.js",
-    "test": "node --test", "db:setup": "node database/setup.js", "db:seed": "node database/seed.js",
-    "ai:verify": "node ai-service/verify.js"
+  "engines": {
+    "node": ">=22.13.0"
   },
-  "dependencies": { "@google/genai": "^1.0.0", "dotenv": "^17.0.0", "express": "^5.1.0", "mongodb": "^6.15.0", "multer": "^2.0.0", "pdf-parse": "^2.4.0", "zod": "^4.0.0" }
+  "scripts": {
+    "dev": "node --watch backend/server.js",
+    "start": "node backend/server.js",
+    "test": "node --test",
+    "db:setup": "node database/setup.js",
+    "db:seed": "node database/seed.js",
+    "ai:verify": "node ai-service/verify.js",
+    "check": "node scripts/check-syntax.js",
+    "athene:setup": "node scripts/athene-setup.js",
+    "athene:samples": "node scripts/athene-samples.js",
+    "athene:demo": "node scripts/athene-demo.js",
+    "test:athene": "node --test tests/athene.test.js",
+    "test:athene:integration": "node --test tests/athene.integration.test.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "dotenv": "^17.0.0",
+    "express": "^5.1.0",
+    "fast-xml-parser": "^5.12.1",
+    "fflate": "^0.8.3",
+    "jose": "^6.2.17",
+    "mongodb": "^6.15.0",
+    "multer": "^2.0.0",
+    "pdf-parse": "^2.4.0",
+    "zod": "^4.0.0"
+  }
 }
