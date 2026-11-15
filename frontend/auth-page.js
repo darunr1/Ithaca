@@ -1,4 +1,7 @@
 import { loadSupabase } from './supabase.js';
+import { attachUniversitySearch } from './shared/university-search.js';
+
+attachUniversitySearch(document.querySelector('#signup-university'));
 
 const form = document.querySelector('#auth-form');
 const status = document.querySelector('#auth-status');
