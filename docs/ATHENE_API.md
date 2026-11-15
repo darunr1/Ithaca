@@ -10,6 +10,9 @@ Base: `/api/projects/:projectId/athene`. In this checkout `projectId` is an exis
 | POST | `/documents/:documentId/reprocess` | None | `AtheneDocument`; unchanged ready content is reused |
 | POST | `/query` | `{ "question": "Who implemented firmware?" }` | `AtheneAnswer` |
 | POST | `/contributions/query` | `{ "person": "Darun", "question": "What work was completed?" }`; at least one field | `AtheneAnswer` with contribution review required |
+| GET | `/insights` | None | `{ insights: InsightReport[] }`; latest 20 saved, project-scoped reviews |
+| POST | `/insights` | `{ "mode": "snapshot" }`; modes `snapshot`, `risks`, `conflicts`, `handoff` | Saved grounded `InsightReport`; searches two topic vectors and deduplicates citations |
+| POST | `/insights/:insightId/review` | `{ "status": "reviewed", "note": "Review completed" }`; or `needs_followup` | Officer-only review status, not an approval of contribution credit |
 
 Responses retain Ithaca's `{ data, meta }` convention; Athene meta is `{ mode: "atlas", fictional: false, feature: "athene" }`. Here `fictional:false` means live data mode, **not** a claim that uploaded text is true; the samples are fictional. Errors use `{ error: { code, message } }`. Consume typed interfaces from `backend/athene/contracts.d.ts`. Render response strings as text, never unsanitized HTML.
 
@@ -53,6 +56,9 @@ await service.reprocess(memberId, projectId, documentId);
 await service.list(memberId, projectId, before);
 await service.status(memberId, projectId, documentId);
 await service.query(memberId, projectId, question, contributionMode);
+await service.analyze(memberId, projectId, 'risks');
+await service.listInsights(memberId, projectId);
+await service.reviewInsight(officerId, projectId, insightId, 'needs_followup', 'Request more tests');
 ```
 
 Each checks project access internally. `memberId` must come from verified shared authentication. `createAtheneRepository(db, config)` always uses the supplied shared connection; importing it creates no new client. `createAtheneGemini(config)` uses the existing official SDK dependency, with independent RAG prompts/schemas. Test dependency injection is explicit and is not selected via demo settings in production.
@@ -90,3 +96,11 @@ New modules are under `backend/athene`, new scripts are `scripts/athene-*` plus 
 Shared edits: `backend/app.js` mounts one router; `backend/config.js` composes Athene config; `backend/server.js` initializes only Athene ordinary indexes and updates its startup notice; `.env.example` adds feature variables; `package.json` and lockfile add `jose`, `fflate`, and `fast-xml-parser` plus scripts; README/API docs add links. The existing auth-less health field refers to the wider foundation, not a bypass of Athene auth. No frontend, Ledger/Bow/Court implementation, shared database schema, existing Gemini extraction, or source fixtures were changed.
 
 Coordinate merges in app/config/server, package files and `.env.example` with Sriram and the other developers. Reuse the injected authentication contract when shared auth arrives. Athene has not been committed, pushed or merged by this implementation task.
+
+## Athena Project Intelligence
+
+The project intelligence panel offers four analysis modes backed by Gemini and MongoDB Atlas Vector Search: a project brief, a risk review, a cross-document consistency check, and a handoff brief. Each analysis makes two **separate embedding queries** targeting different evidence perspectives, merges deduplicated search results within the authenticated club, and calls the existing structured Gemini answer service. The server validates exact evidence quotes and source IDs before saving a report to `atheneInsights`.
+
+Each saved report stores its mode, summary, structured findings, citation metadata, distinct-document coverage, author, timestamp and officer-review status. It does **not** store new contribution credit, verified proof of engineering performance, or automatically create missions. Officers may mark a report reviewed or needing follow-up with a note; members may read reports. Missing evidence is explicitly signaled. A report is a review aid, not an autonomous finding of truth.
+
+The membership dashboard separately shows a member's stable Ithaca ID, incoming invitations for users who already belong to a club, and officer-visible pending outgoing invitations. Membership acceptance still requires the invited student to choose to join and to have the same university as the club.
