@@ -6,7 +6,7 @@ import { readConfig } from '../backend/config.js';
 import { createSupabaseVerifier, provisionSupabaseProfile } from '../backend/auth/supabase.js';
 
 function database() {
-  const data = new Map([['universities', new Map([['uni-a', { id: 'uni-a', name: 'A University', state: 'TX', timezone: 'America/Chicago', semesterStart: '2026-08-24' }]])], ['clubs', new Map()], ['members', new Map()], ['userProfiles', new Map()]]);
+  const data = new Map([['universities', new Map([['uni-a', { id: 'uni-a', name: 'A University', state: 'TX', timezone: 'America/Chicago', semesterStart: '2026-08-24' }]])], ['clubs', new Map()], ['members', new Map()], ['userProfiles', new Map()], ['resumeFiles', new Map()]]);
   const matches = (record, filter) => Object.entries(filter).every(([key, value]) => record?.[key] === value);
   return {
     data, async command() { return { ok: 1 }; },
@@ -15,6 +15,7 @@ function database() {
       return {
         async findOne(filter, options = {}) { const found = [...records.values()].find(record => matches(record, filter)); if (!found) return null; if (!options.projection) return structuredClone(found); return Object.fromEntries(Object.entries(found).filter(([key]) => options.projection[key] !== 0)); },
         async updateOne(filter, update, options = {}) { let found = [...records.values()].find(record => matches(record, filter)); if (!found && options.upsert) { found = structuredClone(update.$setOnInsert || filter); records.set(found.id, found); } if (found && update.$set) Object.assign(found, structuredClone(update.$set)); return { matchedCount: found ? 1 : 0, upsertedCount: found ? 1 : 0 }; },
+        async deleteOne(filter) { const found = [...records.values()].find(record => matches(record, filter)); if (found) records.delete(found.id); return { deletedCount: found ? 1 : 0 }; },
         find(filter = {}) { const rows = [...records.values()].filter(record => matches(record, filter)); return { sort() { return this; }, async toArray() { return structuredClone(rows); } }; }
       };
     }
@@ -73,12 +74,44 @@ test('Supabase protects APIs, provisions onboarding, and never trusts client rol
   const headers = { Authorization: 'Bearer verified-token' };
   assert.equal((await fetch(`${root}/api/clubs`, { headers })).status, 403);
   const me = await (await fetch(`${root}/api/auth/me`, { headers })).json(); assert.equal(me.data.onboardingRequired, true);
-  const onboarded = await fetch(`${root}/api/auth/onboarding`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ universityId: 'uni-a', major: 'Computer Engineering', graduationYear: new Date().getUTCFullYear() + 2, role: 'officer' }) });
+  const onboardingData = { universityName: 'A University', classification: 'sophomore', major: 'Computer Engineering', graduationYear: new Date().getUTCFullYear() + 2 };
+  const onboarded = await fetch(`${root}/api/auth/onboarding`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...onboardingData, role: 'officer' }) });
   assert.equal(onboarded.status, 400, 'unknown role fields are rejected');
-  const accepted = await fetch(`${root}/api/auth/onboarding`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ universityId: 'uni-a', major: 'Computer Engineering', graduationYear: new Date().getUTCFullYear() + 2 }) });
+  const suggestions = await (await fetch(`${root}/api/auth/university-search?q=utd`, { headers })).json();
+  assert.ok(suggestions.data.universities.some(university => university.name === 'University of Texas at Dallas'));
+  assert.equal((await fetch(`${root}/api/auth/university-search?q=utd`)).status, 401);
+
+  const resumeFile = '%PDF-1.4\\n1 0 obj << /Type /Catalog >> endobj\\n%%EOF';
+  const resumeForm = new FormData();
+  resumeForm.append('resume', new Blob([resumeFile], { type: 'application/pdf' }), 'student-resume.pdf');
+  assert.equal((await fetch(`${root}/api/auth/resume`, { method: 'POST', body: resumeForm })).status, 401);
+  const uploaded = await fetch(`${root}/api/auth/resume`, { method: 'POST', headers, body: resumeForm });
+  assert.equal(uploaded.status, 200);
+  assert.equal((await uploaded.json()).data.resume.filename, 'student-resume.pdf');
+  const resumeDownload = await fetch(`${root}/api/auth/resume`, { headers });
+  assert.equal(resumeDownload.status, 200);
+  assert.match(resumeDownload.headers.get('content-disposition'), /attachment/);
+  assert.equal(await resumeDownload.text(), resumeFile);
+  const checkedProfile = await (await fetch(`${root}/api/auth/me`, { headers })).json();
+  assert.equal(checkedProfile.data.profile.resume.size, Buffer.byteLength(resumeFile));
+  assert.equal(JSON.stringify(checkedProfile).includes(resumeFile), false);
+  const badForm = new FormData();
+  badForm.append('resume', new Blob(['definitely not a resume'], { type: 'text/plain' }), 'notes.txt');
+  assert.equal((await fetch(`${root}/api/auth/resume`, { method: 'POST', headers, body: badForm })).status, 415);
+
+  const accepted = await fetch(`${root}/api/auth/onboarding`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(onboardingData) });
   assert.equal(accepted.status, 200);
   const member = [...db.data.get('members').values()][0]; assert.deepEqual([member.clubIds, member.visibleToCompanies, member.openToNewClubs], [[], false, false]);
   assert.equal(member.supabaseUserId, identity.sub);
+  assert.equal(member.universityId, 'uni-a');
+  assert.equal(member.universityName, 'A University');
+  assert.equal(member.classification, 'sophomore');
+  assert.equal(member.year, 2);
+  assert.equal(db.data.get('resumeFiles').size, 1);
+  assert.equal((await fetch(`${root}/api/auth/resume`, { headers: {} })).status, 401);
+  assert.equal((await fetch(`${root}/api/auth/resume`, { method: 'DELETE', headers })).status, 200);
+  assert.equal(db.data.get('resumeFiles').size, 0);
+  assert.equal((await fetch(`${root}/api/auth/resume`, { headers })).status, 404);
   assert.equal((await (await fetch(`${root}/api/clubs`, { headers })).json()).data.length, 0);
   assert.equal((await fetch(`${root}/api/clubs/club-secret/roster`, { headers })).status, 404);
 });
