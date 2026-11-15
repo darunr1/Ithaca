@@ -68,9 +68,5 @@ window.addEventListener('hashchange', () => render());
 if (['localhost', '127.0.0.1'].includes(location.hostname)) {
   try { await fetch('/api/athena-dev-session', { method: 'POST', credentials: 'same-origin' }); } catch { /* normal auth handles non-local environments */ }
 }
-try {
-  const result = await api('/health');
-  document.querySelector('#connection').textContent = `${result.meta.mode === 'demo' ? 'Fictional demo' : 'Atlas connected'} · AI ${result.data.ai}`;
-} catch { document.querySelector('#connection').textContent = 'Backend unavailable'; }
 try { await setupIdentity(); } catch { document.querySelector('#identity-detail').textContent = 'Identity list unavailable'; }
 render();

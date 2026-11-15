@@ -66,12 +66,18 @@ function bindUniversitySearch() {
 }
 
 
-function configureStudentShell({ locked = true, label = 'My workspace' } = {}) {
+function configureStudentShell({ locked = true, label = 'My workspace', showNavigation = false } = {}) {
   document.body.classList.add('student-workspace');
   document.querySelector('#breadcrumb').textContent = label;
-  document.querySelector('#connection').textContent = 'Secure session';
+  
   const picker = document.querySelector('.viewing-as-picker');
   if (picker) picker.hidden = true;
+  document.querySelector('.student-top-brand').hidden = false;
+  document.querySelector('.student-top-nav').hidden = !showNavigation;
+  document.querySelector('.student-top-account').hidden = false;
+  const displayName = document.querySelector('#identity-name').textContent;
+  document.querySelector('#student-top-name').textContent = displayName;
+  document.querySelector('#student-top-avatar').textContent = displayName.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'Ι';
   document.querySelectorAll('.sidebar nav a').forEach(link => {
     const isHome = link.dataset.page === 'home';
     if (isHome) link.setAttribute('aria-current', 'page');
@@ -88,7 +94,8 @@ const firstName = name => String(name || 'there').trim().split(/\s+/)[0];
 const studentYear = value => classificationLabels[value] || 'Not selected';
 
 function onboarding(profile, signupMetadata = {}, editing = false) {
-  configureStudentShell({ label: editing ? 'Edit academic profile' : 'Complete your profile' });
+  configureStudentShell({ label: editing ? 'Edit academic profile' : 'Complete your profile', showNavigation: editing });
+  if (editing) bindStudentNavigation(profile, 'profile');
   const currentYear = new Date().getFullYear();
   const fromSignup = signupMetadata && typeof signupMetadata === 'object' ? signupMetadata : {};
   const university = profile.universityName || (typeof fromSignup.university_name === 'string' ? fromSignup.university_name : '');
@@ -274,7 +281,7 @@ try {
     } else {
       const picker = document.querySelector('.viewing-as-picker');
       if (picker) picker.hidden = true;
-      document.querySelector('#connection').textContent = 'Secure session';
+      
       const logout = document.querySelector('#logout');
       logout.hidden = false;
       logout.addEventListener('click', async () => { logout.disabled = true; await supabase.auth.signOut(); location.replace('/'); });
