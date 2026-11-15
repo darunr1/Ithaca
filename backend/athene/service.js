@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { authorizeProject } from './auth.js';
 import { chunkSections, pipelineProfile } from './chunking.js';
 import { extractInWorker, validateFile } from './extraction.js';
@@ -9,6 +10,26 @@ export function documentView(document) {
   const { _id, leaseId, activeRunId, ...view } = document;
   return { ...view, retryable: view.status === 'failed' || view.status === 'pending' || (view.status === 'processing' && new Date(view.leaseUntil) < new Date()) };
 }
+// Each mode performs two independent vector searches rather than one generic prompt.
+// The cited output is retained for officer review, never auto-translated into points.
+export const INSIGHT_MODES = Object.freeze({
+  snapshot: { title: 'Project intelligence brief', searches: [
+    'Project architecture, requirements, delivered milestones, engineering decisions and work completed',
+    'Latest project test results, open action items, blockers, deadlines and planned work'
+  ], instruction: 'Produce an evidence-backed project brief: what is documented as built, key engineering choices, test evidence, and explicitly documented open work. Do not infer completion from a plan.' },
+  risks: { title: 'Engineering risk review', searches: [
+    'Engineering project failures, bugs, known risks, blockers, unresolved defects, test regressions and mitigation plans',
+    'Testing coverage, safety checks, validation results, requirements and unresolved review findings'
+  ], instruction: 'Investigate explicitly documented technical risks, defects, test failures and mitigations. Distinguish confirmed problems from potential issues, and do not invent missing tests.' },
+  conflicts: { title: 'Cross-document consistency check', searches: [
+    'Requirements, versions, parameters, integration interfaces, design specifications and engineering decisions',
+    'Conflicting design assumptions, contradictory test outcomes, revisions, changed requirements and disagreements'
+  ], instruction: 'Compare retrieved documentation for incompatible claims, changed specifications or contradictory evidence. Cite both sides of each actual conflict. If no conflict is documented, report insufficient evidence rather than claiming none exist.' },
+  handoff: { title: 'Engineer handoff brief', searches: [
+    'System architecture, key interfaces, code modules, setup steps, implementation decisions and operating procedures',
+    'Project ownership, integration tests, unresolved blockers, known limitations, next steps and review decisions'
+  ], instruction: 'Prepare an evidence-backed handoff for a new engineering team member. Include documented interfaces, important decisions, validated behavior and explicitly stated unresolved work; no invented instructions.' }
+});
 const normalize = value => value.replace(/\s+/g, ' ').trim();
 const namedIn = (quote, person) => {
   const words = value => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -100,6 +121,41 @@ export function createAtheneService({ db, config, repository, ai, extract = extr
     },
     async list(memberId, projectId, before) { await authorize(memberId, projectId); return (await repository.list(projectId, before)).map(documentView); },
     async status(memberId, projectId, documentId) { await authorize(memberId, projectId); return documentView(await repository.get(projectId, documentId)); },
+    async listInsights(memberId, projectId) {
+      await authorize(memberId, projectId);
+      return repository.listInsights(projectId);
+    },
+    async reviewInsight(memberId, projectId, reportId, status, reviewNote = '') {
+      await authorize(memberId, projectId, true);
+      return repository.reviewInsight(projectId, reportId, memberId, status, reviewNote);
+    },
+    async analyze(memberId, projectId, mode, signal = AbortSignal.timeout(90000)) {
+      const recipe = INSIGHT_MODES[mode];
+      if (!recipe) throw fail(400, 'INVALID_INSIGHT_MODE', 'Unknown analysis mode.');
+      await authorize(memberId, projectId);
+      const vectors = await ai.embed(recipe.searches, 'RETRIEVAL_QUERY', signal);
+      const batches = await Promise.all(vectors.map(vector => repository.search(projectId, vector)));
+      const unique = new Map();
+      for (const source of batches.flat()) {
+        if (source.projectId !== projectId) throw fail(503, 'RETRIEVAL_SCOPE_ERROR', 'Invalid project retrieval scope.');
+        const previous = unique.get(source.chunkId);
+        if (!previous || source.score > previous.score) unique.set(source.chunkId, { ...source, sourceId: `src_${source.chunkId}` });
+      }
+      const sources = [...unique.values()].sort((a, b) => b.score - a.score).slice(0, 18);
+      const question = `${recipe.instruction} Use only the retrieved excerpts, with exact quotations and source IDs. Do not award points or certify work.`;
+      const output = sources.length ? await ai.answer(question, sources, false, signal) : { statements: [], insufficientEvidence: true, conflictingEvidence: false };
+      const grounded = groundAnswer(output, sources, projectId);
+      await authorize(memberId, projectId);
+      const report = {
+        id: `insight-${randomUUID()}`, projectId, mode, title: recipe.title,
+        question, answer: grounded.answer, statements: grounded.statements, citations: grounded.citations,
+        insufficientEvidence: grounded.insufficientEvidence, conflictingEvidence: grounded.conflictingEvidence,
+        retrieval: { ...grounded.retrieval, searches: recipe.searches.length, documents: new Set(sources.map(s => s.documentId)).size },
+        status: 'open', reviewNote: '', generatedBy: memberId, createdAt: new Date().toISOString()
+      };
+      await repository.saveInsight(report);
+      return report;
+    },
     async query(memberId, projectId, question, contribution = false, signal = AbortSignal.timeout(90000)) {
       await authorize(memberId, projectId);
       if (typeof question !== 'string' || !question.trim() || question.length > 2000) throw fail(400, 'INVALID_QUESTION', 'Question must contain 1–2,000 characters.');
