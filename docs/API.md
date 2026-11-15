@@ -17,10 +17,17 @@ Errors: `{"error":{"code":"VALIDATION_ERROR","message":"..."}}`. Implemented sta
 | GET `/clubs/:id/roster` | Implemented | Sriram |
 | GET `/clubs/:id/sessions` | Implemented | Sriram |
 | GET `/clubs/:id/drafts` | Implemented | Sriram |
-| GET `/members/:id` | Implemented, internal development view | Sriram |
+| GET `/members/:id` | Implemented, internal development view; includes `stats` | Sriram |
+| GET `/clubs/:id/semesters` | Implemented, officer-only (demo identity) | Sriram |
+| GET `/clubs/:id/contribution-requests` | Implemented, the acting member's own requests | Sriram |
+| POST `/clubs/:id/contribution-requests` | Implemented, non-officer members; creates a pending draft, no points | Sriram |
+| GET `/universities` | Implemented, approved-contribution totals per university | Sriram |
+| GET `/universities/:id/leaderboard` | Implemented, most contributions per member at one university | Sriram |
 | GET `/clubs/:id/rankings?range=week\|semester\|all` | Implemented | Sriram |
 | GET `/recruiter/profiles?clubId=...&skill=...` | Implemented, consent-filtered | Sriram |
 | GET `/recruiter/profiles/:id` | Implemented, consent-filtered | Sriram |
+| POST `/contribution-requests/:id/review` | Implemented, officer approve/custom/delete | Sriram |
+| POST `/contributions/:id/reject` | Implemented, officer soft-delete of an approved contribution | Sriram |
 | POST `/clubs/:id/sessions` | Planned / 501 | Sriram |
 | POST `/sessions/:id/attendance` | Planned / 501 | Sriram |
 | POST `/clubs/:id/contributions/drafts` | Planned / 501 | Darun + Sriram |
@@ -55,10 +62,28 @@ Examples show `data` only; use the envelope above. Full reusable envelopes are i
 `GET /clubs/club-rocketry/rankings?range=all`:
 
 ```json
-{"range":"all","start":"0000-01-01","rows":[{"memberId":"member-leo","name":"Leo Marin","points":190,"rank":1},{"memberId":"member-iris","name":"Iris Vale","points":130,"rank":2},{"memberId":"member-sana","name":"Sana Reed","points":100,"rank":3}],"caveat":"Activity within this club; not a measure of engineering ability."}
+{"range":"all","start":"0000-01-01","rows":[{"memberId":"member-leo","name":"Leo Marin","points":280,"rank":1},{"memberId":"member-iris","name":"Iris Vale","points":250,"rank":2},{"memberId":"member-sana","name":"Sana Reed","points":130,"rank":3}],"caveat":"Activity within this club; not a measure of engineering ability."}
 ```
 
 `GET /recruiter/profiles?skill=CAN` → array of `{member, university, clubs, contributions}`. Member fields are allowlisted to `id`, `name`, `major`, `year`, `skills`, `universityId`, `clubIds`. No email or other contact details. Evidence is the approved contribution shape above. Specific hidden/nonexistent profiles return the same 404. Internal profile routes must not be used by recruiter UI.
+
+## Kleos Ledger routes
+
+**Demo identity.** Routes that depend on who is acting read the `X-Demo-Member: <memberId>` header. The frontend sets it from the "Viewing as" picker. This is a **demo identity assertion, not authentication**: anyone can send any ID. Missing or unknown identity → 401 `IDENTITY_REQUIRED`. Replace this with an authenticated session before using real data.
+
+`GET /members/:id` now also returns `stats`: `{totalPoints, contributionCount, contributionPoints, attendanceCount, attendancePoints, universityName, clubs:[{clubId,name,officer,rank,of,points}], skills:[{skill,count}], semesters:[{key,label,contributions,attendance,points}]}`. Semesters are calendar terms (Spring Jan–May, Summer Jun–Jul, Fall Aug–Dec), newest first. Skills are counted from approved contributions only.
+
+`GET /clubs/:id/semesters` (officers of that club only; 403 `OFFICER_REQUIRED` otherwise) → `{clubId, clubName, pendingRequests, semesters:[{key,label,contributions,points,contributors,members:[{memberId,name,contributions,points}],entries:[...]}]}`.
+
+`POST /clubs/:id/contribution-requests` (club members who are not officers of that club; 403 otherwise):
+
+```json
+{"description":"Rewrote the parachute deployment checklist.","evidence":"Session 4 notes: walked the team through the checklist.","skills":["Recovery systems"],"suggestedLevel":"low","date":"2026-11-10"}
+```
+
+201 returns a `drafts` record with `origin:"member-request"`, `status:"pending"`, `memberId` = the acting member, and `source.memberSubmitted:true`. No points are awarded; it appears in officer review alongside Athena drafts. Unknown fields, future/invalid dates, and `custom` levels → 400. In demo mode the draft is kept in server memory and is gone after a restart.
+
+`GET /universities` → `[{universityId,name,contributions,points,contributors,clubs,rank}]`, ordered by approved contribution count, then points. `GET /universities/:id/leaderboard` → `{university:{id,name}, rows:[{memberId,name,contributions,points,clubIds,clubs,rank}], caveat}`.
 
 ## Planned writes — target JSON for frontend mocks
 

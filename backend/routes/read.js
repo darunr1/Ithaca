@@ -12,7 +12,7 @@ export function readRoutes({ repository, workspace, send, config }) {
   router.get('/clubs/:id/drafts', async (req, res) => { await workspace.requireRecord('clubs', id.parse(req.params.id)); send(res, await repository.list('drafts', { clubId: req.params.id })); });
   router.get('/members/:id', async (req, res) => send(res, await workspace.profile(id.parse(req.params.id))));
   router.get('/clubs/:id/rankings', async (req, res) => {
-    const range = z.enum(['week', 'semester', 'all']).parse(req.query.range ?? 'all');
+    const range = z.union([z.enum(['week', 'semester', 'all']), z.string().regex(/^\d{4}-(spring|summer|fall|winter)$/)]).parse(req.query.range ?? 'all');
     send(res, await workspace.rankings(id.parse(req.params.id), range, config.DATA_MODE === 'demo' ? '2026-11-14' : undefined));
   });
   router.get('/recruiter/profiles', async (req, res) => {
