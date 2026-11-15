@@ -1,6 +1,6 @@
 import { extname } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
-// Keep pdf-parse lazy: loading pdfjs-dist at a Vercel cold start can require
+// Keep pdf-parse lazy: loading pdfjs-dist during a Vercel cold start can require
 // optional canvas globals and crash every API route before Express initializes.
 import { unzipSync, strFromU8 } from 'fflate';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
