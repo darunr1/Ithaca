@@ -154,7 +154,6 @@ function onboarding(profile, signupMetadata = {}, editing = false) {
       }
       feedback.textContent = 'Saving your university and academic details…';
       await api('/auth/onboarding', { method: 'POST', body: details });
-      location.replace('/dashboard#home');
       location.reload();
     } catch (err) {
       feedback.textContent = err.message || 'Unable to save your profile. Please try again.';
