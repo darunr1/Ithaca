@@ -1,10 +1,9 @@
 import { api } from '../shared/api.js';
 import { e, heading } from '../shared/ui.js';
 export async function renderHome() {
-  const [{ data: allClubs }, { data: roster }, { data: sessions }, { data: rankings }, { data: drafts }] = await Promise.all([
+  const [{ data: clubs }, { data: roster }, { data: sessions }, { data: rankings }, { data: drafts }] = await Promise.all([
     api('/clubs'), api('/clubs/club-rocketry/roster'), api('/clubs/club-rocketry/sessions'), api('/clubs/club-rocketry/rankings?range=all'), api('/clubs/club-rocketry/drafts')
   ]);
-  const clubs = allClubs.filter(c => c.universityId === 'uni-aster');
   return `${heading('YOUR CLUB’S CONTINUING VOYAGE', 'A home for the work that matters.', 'Record the contribution. Recognize the engineer. Carry the knowledge forward.')}
     <section class="hero"><div><p class="eyebrow">ASTER ROCKETRY / FALL 2026</p><h2>Today’s work.<br>Tomorrow’s legacy.</h2><p>Behind every launch is a team worth remembering.<br>Make the engineering—and the people behind it—visible.</p><a href="#kleos" class="button light">Explore the ledger <span>↗</span></a></div><div class="orbit" aria-hidden="true"><div class="orbit-inner"><span>Ι</span><small>JOIN · CONTRIBUTE · LEAD</small></div><i></i></div><span class="hero-caption">PROJECT ARGOS · AVIONICS & FLIGHT SYSTEMS</span></section>
     <section class="stats" aria-label="Club activity"><article><span>Active members</span><strong>${roster.length.toString().padStart(2, '0')}</strong><small>Aster Rocketry roster</small></article><article><span>Recorded sessions</span><strong>${sessions.length.toString().padStart(2, '0')}</strong><small>Four weeks of fictional history</small></article><article><span>Recognized activity</span><strong>${rankings.rows.reduce((sum, r) => sum + r.points, 0)}</strong><small>Contribution + attendance points</small></article><article><span>Awaiting review</span><strong>${drafts.filter(d => d.status === 'pending').length.toString().padStart(2, '0')}</strong><small>Drafts earn no points</small></article></section>

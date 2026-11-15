@@ -32,8 +32,7 @@
         "category": "Battery systems & mobility",
         "project": "Helios EV · battery pack",
         "officerIds": [
-          "member-nora",
-          "member-kai"
+          "member-nora"
         ]
       },
       {
@@ -44,17 +43,6 @@
         "project": "Talos · autonomous rover",
         "officerIds": [
           "member-eli"
-        ]
-      },
-      {
-        "id": "club-meridian-space",
-        "universityId": "uni-meridian",
-        "name": "Meridian Space Systems",
-        "category": "Propulsion & ground systems",
-        "project": "Kestrel · hybrid sounding rocket",
-        "officerIds": [
-          "member-tomas",
-          "member-ada"
         ]
       }
     ],
@@ -260,30 +248,6 @@
             "fictional": true
           },
           "createdAt": "2026-10-24T20:00:00.000Z"
-        },
-        {
-          "id": "contribution-7",
-          "clubId": "club-rocketry",
-          "universityId": "uni-aster",
-          "memberId": "member-leo",
-          "date": "2026-04-02",
-          "week": "2026-03-30",
-          "description": "Wrote the CAN bus logging tool for the spring static fire.",
-          "skills": [
-            "C firmware",
-            "CAN"
-          ],
-          "level": "high",
-          "points": 90,
-          "status": "approved",
-          "approvedBy": "member-iris",
-          "source": {
-            "id": "notes-7",
-            "title": "Static fire debrief",
-            "excerpt": "Leo Marin: Wrote the CAN bus logging tool for the spring static fire.",
-            "fictional": true
-          },
-          "createdAt": "2026-04-02T20:00:00.000Z"
         }
       ],
       "attendance": [
@@ -327,55 +291,7 @@
           "points": 10,
           "recordedBy": "member-iris"
         }
-      ],
-      "stats": {
-        "totalPoints": 280,
-        "contributionCount": 3,
-        "contributionPoints": 240,
-        "attendanceCount": 4,
-        "attendancePoints": 40,
-        "universityName": "Aster University",
-        "clubs": [
-          {
-            "clubId": "club-rocketry",
-            "name": "Aster Rocketry",
-            "officer": true,
-            "rank": 1,
-            "of": 3,
-            "points": 280
-          }
-        ],
-        "skills": [
-          {
-            "skill": "C firmware",
-            "count": 3
-          },
-          {
-            "skill": "CAN",
-            "count": 2
-          },
-          {
-            "skill": "Hardware validation",
-            "count": 1
-          }
-        ],
-        "semesters": [
-          {
-            "key": "2026-3",
-            "label": "Fall 2026",
-            "contributions": 2,
-            "attendance": 4,
-            "points": 190
-          },
-          {
-            "key": "2026-1",
-            "label": "Spring 2026",
-            "contributions": 1,
-            "attendance": 0,
-            "points": 90
-          }
-        ]
-      }
+      ]
     },
     "meta": {
       "mode": "demo",
@@ -390,19 +306,19 @@
       "rows": [
         {
           "memberId": "member-leo",
-          "points": 280,
+          "points": 190,
           "name": "Leo Marin",
           "rank": 1
         },
         {
           "memberId": "member-iris",
-          "points": 250,
+          "points": 130,
           "name": "Iris Vale",
           "rank": 2
         },
         {
           "memberId": "member-sana",
-          "points": 130,
+          "points": 100,
           "name": "Sana Reed",
           "rank": 3
         }
@@ -457,53 +373,6 @@
               "fictional": true
             },
             "createdAt": "2026-11-07T20:00:00.000Z"
-          },
-          {
-            "id": "contribution-6",
-            "clubId": "club-rocketry",
-            "universityId": "uni-aster",
-            "memberId": "member-iris",
-            "date": "2026-03-12",
-            "week": "2026-03-09",
-            "description": "Led the avionics bay layout review for the spring test launch.",
-            "skills": [
-              "Avionics"
-            ],
-            "level": "medium",
-            "points": 60,
-            "status": "approved",
-            "approvedBy": "member-leo",
-            "source": {
-              "id": "notes-6",
-              "title": "Spring launch prep notes",
-              "excerpt": "Iris Vale: Led the avionics bay layout review for the spring test launch.",
-              "fictional": true
-            },
-            "createdAt": "2026-03-12T20:00:00.000Z"
-          },
-          {
-            "id": "contribution-5",
-            "clubId": "club-rocketry",
-            "universityId": "uni-aster",
-            "memberId": "member-iris",
-            "date": "2025-10-15",
-            "week": "2025-10-13",
-            "description": "Drafted the first flight computer block diagram.",
-            "skills": [
-              "Avionics",
-              "PCB design"
-            ],
-            "level": "medium",
-            "points": 60,
-            "status": "approved",
-            "approvedBy": "member-leo",
-            "source": {
-              "id": "notes-5",
-              "title": "Fall design review notes",
-              "excerpt": "Iris Vale: Drafted the first flight computer block diagram.",
-              "fictional": true
-            },
-            "createdAt": "2025-10-15T20:00:00.000Z"
           }
         ]
       },
@@ -573,30 +442,6 @@
               "fictional": true
             },
             "createdAt": "2026-10-24T20:00:00.000Z"
-          },
-          {
-            "id": "contribution-7",
-            "clubId": "club-rocketry",
-            "universityId": "uni-aster",
-            "memberId": "member-leo",
-            "date": "2026-04-02",
-            "week": "2026-03-30",
-            "description": "Wrote the CAN bus logging tool for the spring static fire.",
-            "skills": [
-              "C firmware",
-              "CAN"
-            ],
-            "level": "high",
-            "points": 90,
-            "status": "approved",
-            "approvedBy": "member-iris",
-            "source": {
-              "id": "notes-7",
-              "title": "Static fire debrief",
-              "excerpt": "Leo Marin: Wrote the CAN bus logging tool for the spring static fire.",
-              "fictional": true
-            },
-            "createdAt": "2026-04-02T20:00:00.000Z"
           }
         ]
       },
@@ -615,31 +460,7 @@
             "club-electric"
           ]
         },
-        "contributions": [
-          {
-            "id": "contribution-9",
-            "clubId": "club-electric",
-            "universityId": "uni-aster",
-            "memberId": "member-nora",
-            "date": "2026-09-18",
-            "week": "2026-09-14",
-            "description": "Tuned cell-balancing thresholds in battery-management firmware.",
-            "skills": [
-              "Battery-management firmware"
-            ],
-            "level": "high",
-            "points": 90,
-            "status": "approved",
-            "approvedBy": "member-kai",
-            "source": {
-              "id": "notes-9",
-              "title": "Pack bring-up notes",
-              "excerpt": "Nora Ash: Tuned cell-balancing thresholds in battery-management firmware.",
-              "fictional": true
-            },
-            "createdAt": "2026-09-18T20:00:00.000Z"
-          }
-        ]
+        "contributions": []
       },
       {
         "member": {
@@ -657,411 +478,8 @@
           ]
         },
         "contributions": []
-      },
-      {
-        "member": {
-          "id": "member-tomas",
-          "name": "Tomas Kerr",
-          "major": "Aerospace Engineering",
-          "year": 4,
-          "skills": [
-            "Thermal analysis"
-          ],
-          "universityId": "uni-meridian",
-          "clubIds": [
-            "club-meridian-space"
-          ]
-        },
-        "contributions": [
-          {
-            "id": "contribution-13",
-            "clubId": "club-meridian-space",
-            "universityId": "uni-meridian",
-            "memberId": "member-tomas",
-            "date": "2026-10-08",
-            "week": "2026-10-05",
-            "description": "Completed thermal analysis of the payload bay.",
-            "skills": [
-              "Thermal analysis"
-            ],
-            "level": "medium",
-            "points": 60,
-            "status": "approved",
-            "approvedBy": "member-ada",
-            "source": {
-              "id": "notes-13",
-              "title": "Payload review notes",
-              "excerpt": "Tomas Kerr: Completed thermal analysis of the payload bay.",
-              "fictional": true
-            },
-            "createdAt": "2026-10-08T20:00:00.000Z"
-          }
-        ]
-      },
-      {
-        "member": {
-          "id": "member-ada",
-          "name": "Ada Quill",
-          "major": "Mechanical Engineering",
-          "year": 3,
-          "skills": [
-            "Propulsion testing",
-            "Documentation"
-          ],
-          "universityId": "uni-meridian",
-          "clubIds": [
-            "club-meridian-space"
-          ]
-        },
-        "contributions": [
-          {
-            "id": "contribution-14",
-            "clubId": "club-meridian-space",
-            "universityId": "uni-meridian",
-            "memberId": "member-ada",
-            "date": "2026-10-22",
-            "week": "2026-10-19",
-            "description": "Documented the motor test stand safety checklist.",
-            "skills": [
-              "Documentation"
-            ],
-            "level": "low",
-            "points": 30,
-            "status": "approved",
-            "approvedBy": "member-tomas",
-            "source": {
-              "id": "notes-14",
-              "title": "Test stand walkthrough",
-              "excerpt": "Ada Quill: Documented the motor test stand safety checklist.",
-              "fictional": true
-            },
-            "createdAt": "2026-10-22T20:00:00.000Z"
-          },
-          {
-            "id": "contribution-11",
-            "clubId": "club-meridian-space",
-            "universityId": "uni-meridian",
-            "memberId": "member-ada",
-            "date": "2026-09-10",
-            "week": "2026-09-07",
-            "description": "Ran the hot-fire test sequence for the hybrid motor.",
-            "skills": [
-              "Propulsion testing"
-            ],
-            "level": "high",
-            "points": 90,
-            "status": "approved",
-            "approvedBy": "member-tomas",
-            "source": {
-              "id": "notes-11",
-              "title": "Hot-fire log",
-              "excerpt": "Ada Quill: Ran the hot-fire test sequence for the hybrid motor.",
-              "fictional": true
-            },
-            "createdAt": "2026-09-10T20:00:00.000Z"
-          }
-        ]
       }
     ],
-    "meta": {
-      "mode": "demo",
-      "fictional": true,
-      "foundation": true
-    }
-  },
-  "GET /api/clubs/club-rocketry/semesters (X-Demo-Member: member-iris)": {
-    "data": {
-      "clubId": "club-rocketry",
-      "clubName": "Aster Rocketry",
-      "pendingRequests": 0,
-      "semesters": [
-        {
-          "key": "2026-3",
-          "label": "Fall 2026",
-          "contributions": 4,
-          "points": 300,
-          "contributors": 3,
-          "members": [
-            {
-              "memberId": "member-leo",
-              "name": "Leo Marin",
-              "contributions": 2,
-              "points": 150
-            },
-            {
-              "memberId": "member-iris",
-              "name": "Iris Vale",
-              "contributions": 1,
-              "points": 90
-            },
-            {
-              "memberId": "member-sana",
-              "name": "Sana Reed",
-              "contributions": 1,
-              "points": 60
-            }
-          ],
-          "entries": [
-            {
-              "id": "contribution-4",
-              "memberId": "member-leo",
-              "name": "Leo Marin",
-              "date": "2026-11-14",
-              "description": "Validated the firmware fix across 200 simulated flight cycles.",
-              "skills": [
-                "Hardware validation",
-                "C firmware"
-              ],
-              "level": "medium",
-              "points": 60
-            },
-            {
-              "id": "contribution-3",
-              "memberId": "member-iris",
-              "name": "Iris Vale",
-              "date": "2026-11-07",
-              "description": "Designed the flight computer PCB power stage and completed its review.",
-              "skills": [
-                "PCB design",
-                "Avionics"
-              ],
-              "level": "high",
-              "points": 90
-            },
-            {
-              "id": "contribution-2",
-              "memberId": "member-sana",
-              "name": "Sana Reed",
-              "date": "2026-10-31",
-              "description": "Integrated the pressure sensor and documented calibration offsets.",
-              "skills": [
-                "Sensor integration",
-                "Python"
-              ],
-              "level": "medium",
-              "points": 60
-            },
-            {
-              "id": "contribution-1",
-              "memberId": "member-leo",
-              "name": "Leo Marin",
-              "date": "2026-10-24",
-              "description": "Reproduced and fixed the CAN frame timeout in avionics firmware.",
-              "skills": [
-                "C firmware",
-                "CAN"
-              ],
-              "level": "high",
-              "points": 90
-            }
-          ]
-        },
-        {
-          "key": "2026-1",
-          "label": "Spring 2026",
-          "contributions": 3,
-          "points": 180,
-          "contributors": 3,
-          "members": [
-            {
-              "memberId": "member-leo",
-              "name": "Leo Marin",
-              "contributions": 1,
-              "points": 90
-            },
-            {
-              "memberId": "member-iris",
-              "name": "Iris Vale",
-              "contributions": 1,
-              "points": 60
-            },
-            {
-              "memberId": "member-sana",
-              "name": "Sana Reed",
-              "contributions": 1,
-              "points": 30
-            }
-          ],
-          "entries": [
-            {
-              "id": "contribution-8",
-              "memberId": "member-sana",
-              "name": "Sana Reed",
-              "date": "2026-04-20",
-              "description": "Assembled the sensor harness for the spring static fire.",
-              "skills": [
-                "Sensor integration"
-              ],
-              "level": "low",
-              "points": 30
-            },
-            {
-              "id": "contribution-7",
-              "memberId": "member-leo",
-              "name": "Leo Marin",
-              "date": "2026-04-02",
-              "description": "Wrote the CAN bus logging tool for the spring static fire.",
-              "skills": [
-                "C firmware",
-                "CAN"
-              ],
-              "level": "high",
-              "points": 90
-            },
-            {
-              "id": "contribution-6",
-              "memberId": "member-iris",
-              "name": "Iris Vale",
-              "date": "2026-03-12",
-              "description": "Led the avionics bay layout review for the spring test launch.",
-              "skills": [
-                "Avionics"
-              ],
-              "level": "medium",
-              "points": 60
-            }
-          ]
-        },
-        {
-          "key": "2025-3",
-          "label": "Fall 2025",
-          "contributions": 1,
-          "points": 60,
-          "contributors": 1,
-          "members": [
-            {
-              "memberId": "member-iris",
-              "name": "Iris Vale",
-              "contributions": 1,
-              "points": 60
-            }
-          ],
-          "entries": [
-            {
-              "id": "contribution-5",
-              "memberId": "member-iris",
-              "name": "Iris Vale",
-              "date": "2025-10-15",
-              "description": "Drafted the first flight computer block diagram.",
-              "skills": [
-                "Avionics",
-                "PCB design"
-              ],
-              "level": "medium",
-              "points": 60
-            }
-          ]
-        }
-      ]
-    },
-    "meta": {
-      "mode": "demo",
-      "fictional": true,
-      "foundation": true
-    }
-  },
-  "GET /api/universities": {
-    "data": [
-      {
-        "universityId": "uni-aster",
-        "name": "Aster University",
-        "contributions": 10,
-        "points": 690,
-        "contributors": 5,
-        "clubs": 2,
-        "rank": 1
-      },
-      {
-        "universityId": "uni-meridian",
-        "name": "Meridian Institute of Technology",
-        "contributions": 5,
-        "points": 270,
-        "contributors": 3,
-        "clubs": 1,
-        "rank": 2
-      }
-    ],
-    "meta": {
-      "mode": "demo",
-      "fictional": true,
-      "foundation": true
-    }
-  },
-  "GET /api/universities/uni-aster/leaderboard": {
-    "data": {
-      "university": {
-        "id": "uni-aster",
-        "name": "Aster University"
-      },
-      "rows": [
-        {
-          "memberId": "member-leo",
-          "name": "Leo Marin",
-          "contributions": 3,
-          "points": 240,
-          "clubIds": [
-            "club-rocketry"
-          ],
-          "rank": 1,
-          "clubs": [
-            "Aster Rocketry"
-          ]
-        },
-        {
-          "memberId": "member-iris",
-          "name": "Iris Vale",
-          "contributions": 3,
-          "points": 210,
-          "clubIds": [
-            "club-rocketry"
-          ],
-          "rank": 2,
-          "clubs": [
-            "Aster Rocketry"
-          ]
-        },
-        {
-          "memberId": "member-sana",
-          "name": "Sana Reed",
-          "contributions": 2,
-          "points": 90,
-          "clubIds": [
-            "club-rocketry"
-          ],
-          "rank": 3,
-          "clubs": [
-            "Aster Rocketry"
-          ]
-        },
-        {
-          "memberId": "member-nora",
-          "name": "Nora Ash",
-          "contributions": 1,
-          "points": 90,
-          "clubIds": [
-            "club-electric"
-          ],
-          "rank": 4,
-          "clubs": [
-            "Aster Electric Racing"
-          ]
-        },
-        {
-          "memberId": "member-kai",
-          "name": "Kai Brook",
-          "contributions": 1,
-          "points": 60,
-          "clubIds": [
-            "club-electric"
-          ],
-          "rank": 5,
-          "clubs": [
-            "Aster Electric Racing"
-          ]
-        }
-      ],
-      "caveat": "Counts officer-approved contributions only; not a measure of engineering ability."
-    },
     "meta": {
       "mode": "demo",
       "fictional": true,
