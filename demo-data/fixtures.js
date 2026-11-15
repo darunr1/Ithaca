@@ -1,8 +1,8 @@
 // Every person, organization, source excerpt and accomplishment in this file is fictional.
 import { weekStart } from '../backend/services/scoring.js';
 export const universities = [
-  { id: 'uni-aster', name: 'Aster University', timezone: 'America/Chicago', semesterStart: '2026-08-24' },
-  { id: 'uni-meridian', name: 'Meridian Institute of Technology', timezone: 'America/Denver', semesterStart: '2026-08-17' }
+  { id: 'uni-aster', name: 'Aster University', state: 'Texas', timezone: 'America/Chicago', semesterStart: '2026-08-24' },
+  { id: 'uni-meridian', name: 'Meridian Institute of Technology', state: 'Colorado', timezone: 'America/Denver', semesterStart: '2026-08-17' }
 ];
 export const clubs = [
   // `organization` is the national organization the club is a chapter of (acronym from backend/data/engineering-organizations.csv).

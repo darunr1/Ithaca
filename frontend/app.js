@@ -4,6 +4,7 @@ import { renderHome } from './core/home.js';
 import { renderAthena } from './core/athena.js';
 import { renderKleos, bindKleos } from './core/kleos.js';
 import { renderMember } from './core/member.js';
+import { bindCourtSuggestions } from './recruiting/suggestions.js';
 import { renderCourt } from './recruiting/court.js';
 import { renderBow } from './recruiting/bow.js';
 // [title, view, bind?, nav section]
@@ -24,8 +25,10 @@ async function render(argument) {
     if (currentRevision !== revision) return;
     content.innerHTML = html;
     if (argument === undefined) window.scrollTo(0, 0);
-    bind?.(content, next => render(next));
-    document.querySelector('#skill-search')?.addEventListener('submit', event => { event.preventDefault(); render(new FormData(event.target).get('skill')); });
+    bind?.(content, next => render(next)); // Kleos binds its own controls, including #ranking-range
+    bindCourtSuggestions(content);
+    document.querySelector('#court-search')?.addEventListener('submit', event => { event.preventDefault(); render(Object.fromEntries(new FormData(event.target))); });
+    document.querySelector('#court-clear')?.addEventListener('click', () => render({}));
   } catch (error) {
     if (currentRevision !== revision) return;
     content.innerHTML = `<div class="notice" role="alert">${e(error.message)} No replacement demo data was loaded.</div><button id="retry">Try again</button>`;
