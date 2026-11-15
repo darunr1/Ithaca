@@ -32,7 +32,7 @@ async function renderAthena() {
   return `<div class="module-page module-athena"><header class="module-hero"><div><span class="module-kicker">ATHENA / GEMINI + ATLAS VECTOR SEARCH</span><h1>Your project knowledge, accessible.</h1><p>Upload engineering documentation and ask evidence-grounded questions. Athena retrieves relevant passages and cites them — without inventing contributions.</p></div><div class="module-hero-symbol" aria-hidden="true">✧</div></header>
     <div class="module-context"><label for="athena-club">Active club</label><select id="athena-club">${clubs.map(item => `<option value="${e(item.id)}" ${item.id === activeClubId ? 'selected' : ''}>${e(item.name)}</option>`).join('')}</select><span>${canUpload ? 'Officer: document upload enabled' : 'Member: read and ask questions'}</span></div>
     ${documentsError ? `<div class="notice" role="alert">Documents could not load: ${e(documentsError)}</div>` : ''}
-    ${canUpload ? '<button type="button" class="module-setup-button" id="athena-initialize">Initialize / verify Atlas Vector Search</button><p id="athena-initialize-status" class="module-muted" role="status"></p>' : ''}
+    ${canUpload ? '<div class="athena-setup-actions"><button type="button" class="module-setup-button" id="athena-initialize">Initialize Atlas Vector Search</button><button type="button" class="module-setup-button" id="athena-diagnostics">Test Gemini embeddings + Atlas</button></div><p id="athena-initialize-status" class="module-muted" role="status"></p>' : ''}
     ${session.meta.provider === 'supabase' ? '' : '<p><button id="athena-logout" type="button" class="secondary">Sign out of Athena</button></p>'}
     ${notice('Athena returns citations to your own project documents. Human review is required before any contribution is credited.')}
     <div class="columns"><section class="panel"><p class="eyebrow">01 / PROJECT SOURCES</p><h2>Upload project documents</h2><form id="athena-upload-form" ${canUpload ? '' : 'hidden'}><div class="upload-placeholder" id="athena-dropzone" tabindex="0" role="button" aria-label="Choose project documents"><span>↥</span><h3>Choose or drop files here</h3><p>PDF, DOCX, and supported CAD metadata · under 4 MiB combined · maximum 5 files</p><label class="button" for="athena-files">Choose files</label><input id="athena-files" name="files" type="file" accept=".pdf,.docx,.step,.stp,.dxf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple required></div><button type="submit" id="athena-upload-submit">Upload documents</button><p id="athena-upload-status" class="body-copy" role="status"></p></form><ul class="athena-documents" id="athena-documents">${rows}</ul></section><section class="panel"><p class="eyebrow">02 / GROUNDED QUESTIONS</p><h2>Ask Athena</h2><form id="athena-query-form" class="search"><label class="sr-only" for="athena-question">Question</label><input id="athena-question" name="question" placeholder="Who worked on the battery firmware?" required maxlength="2000"><button type="submit">Ask</button></form><div id="athena-answer" aria-live="polite"><p class="empty">Your grounded answer will appear here with source citations.</p></div><hr><p class="eyebrow">CONTRIBUTION EVIDENCE</p><form id="athena-contribution-form" class="search"><label class="sr-only" for="athena-person">Person</label><input id="athena-person" name="person" placeholder="Person, e.g. Darun" maxlength="120" required><input name="question" placeholder="What did they contribute?" maxlength="2000"><button type="submit">Analyze</button></form><div id="athena-contribution-answer" aria-live="polite"></div></section></div></div>`;
@@ -70,6 +70,16 @@ function bindAthena() {
       const result = await apiJson(`${projectPath()}/initialize`, {});
       output.textContent = result.data.ready ? 'Atlas Vector Search is ready.' : result.data.note;
     } catch (error) { output.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  document.querySelector('#athena-diagnostics')?.addEventListener('click', async event => {
+    const button = event.currentTarget, output = document.querySelector('#athena-initialize-status');
+    button.disabled = true;
+    output.textContent = 'Testing the live Gemini embedding API and Atlas search index…';
+    try {
+      const { data } = await apiJson(`${projectPath()}/diagnostics`, {});
+      output.textContent = `Gemini embeddings: ${data.embeddings}. Atlas index: ${data.vectorIndex}${data.vectorQueryable ? ' (ready).' : ' (not ready yet).'} ${data.note}`;
+    } catch (error) { output.textContent = `Integration check failed: ${error.message}`; }
     finally { button.disabled = false; }
   });
   const filesInput = document.querySelector('#athena-files');
