@@ -64,3 +64,18 @@ textarea{font:inherit;padding:10px 12px;border:1px solid #c9d3ce;background:whit
 .court-profiles>.empty{grid-column:1/-1;text-align:center;background:white;border:1px dashed #c9d3ce;border-radius:12px;padding:40px 24px}
 @media(max-width:1150px){.court-secondary-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.court-search-heading>.pill{display:none}.court-search-footer{align-items:flex-start;flex-direction:column}}
 @media(max-width:540px){.court-search{padding:22px 18px}.court-primary-fields,.court-secondary-fields{grid-template-columns:1fr;gap:16px}.court-search-heading h2{font-size:19px}.court-filter-label{justify-content:space-between;gap:8px}.court-search-footer .actions{width:100%;display:grid;grid-template-columns:1fr 1fr}.court-search-footer button{padding-inline:10px;font-size:11px;gap:8px}.court-profile{padding:22px 18px}.court-results-heading h2{font-size:16px}}
+
+/* Athena upload and citation layout */
+.athena-document{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid #edf0eb;min-width:0}
+.athena-document small{display:block;color:var(--muted);overflow-wrap:anywhere}
+.athena-documents{padding:0;margin:0;list-style:none}
+.athena-citation{border-top:1px solid var(--line);padding:10px 0;font-size:12px}
+.athena-citation summary{cursor:pointer;color:var(--sea);font-weight:600;overflow-wrap:anywhere}
+.athena-citation small{display:block;color:var(--muted);padding-top:6px}
+.upload-placeholder{position:relative;min-width:0;overflow-wrap:anywhere}
+.upload-placeholder input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.upload-placeholder .button{display:inline-flex;justify-content:center;margin-top:8px}
+.upload-placeholder.dragging{border-color:var(--sea);background:#eef7f4}
+.columns{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.panel{min-width:0}
+@media(max-width:850px){.columns{grid-template-columns:minmax(0,1fr)}}

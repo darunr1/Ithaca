@@ -1,0 +1,16 @@
+import 'dotenv/config';
+import { sampleFiles } from './athene-sample-data.js';
+const projectId = process.env.ATHENE_TEST_PROJECT_ID || 'club-rocketry';
+const token = process.env.ATHENE_TEST_BEARER_TOKEN || process.env.ATHENE_DEV_TOKEN;
+if (!token) throw new Error('Set ATHENE_TEST_BEARER_TOKEN or ATHENE_DEV_TOKEN in .env.');
+const root = `http://127.0.0.1:${process.env.PORT || 3000}/api/projects/${encodeURIComponent(projectId)}/athene`;
+const headers = { Authorization: `Bearer ${token}` };
+const form = new FormData();
+for (const file of sampleFiles()) form.append('files', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+const upload = await fetch(`${root}/documents`, { method: 'POST', headers, body: form, signal: AbortSignal.timeout(210000) });
+const result = await upload.json(); console.log(JSON.stringify(result, null, 2));
+if (upload.status !== 200 || result.data.documents.some(d => d.status !== 'ready')) throw new Error('Upload did not complete; inspect document statuses above.');
+console.log('Wait for Atlas indexing if a first query reports insufficient evidence. Re-running this demo reuses unchanged documents.');
+const response = await fetch(`${root}/contributions/query`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ person: 'Darun', question: 'What firmware work did Darun complete, and what remains only planned?' }), signal: AbortSignal.timeout(105000) });
+console.log(JSON.stringify(await response.json(), null, 2));
+if (!response.ok) process.exitCode = 1;

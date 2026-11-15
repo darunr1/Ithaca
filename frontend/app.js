@@ -1,7 +1,7 @@
 import { api, currentMemberId, setCurrentMemberId } from './shared/api.js';
 import { e, initials } from './shared/ui.js';
 import { renderHome } from './core/home.js';
-import { renderAthena } from './core/athena.js';
+import { renderAthena, bindAthena } from './core/athena.js';
 import { renderKleos, bindKleos } from './core/kleos.js';
 import { renderMember } from './core/member.js';
 import { bindCourtSuggestions } from './recruiting/suggestions.js';
@@ -26,6 +26,7 @@ async function render(argument) {
     content.innerHTML = html;
     if (argument === undefined) window.scrollTo(0, 0);
     bind?.(content, next => render(next)); // Kleos binds its own controls, including #ranking-range
+    if (key === 'athena') bindAthena();
     bindCourtSuggestions(content);
     document.querySelector('#court-search')?.addEventListener('submit', event => { event.preventDefault(); render(Object.fromEntries(new FormData(event.target))); });
     document.querySelector('#court-clear')?.addEventListener('click', () => render({}));
@@ -55,6 +56,9 @@ async function setupIdentity() {
   select.addEventListener('change', () => { setCurrentMemberId(select.value); describe(); render(); });
 }
 window.addEventListener('hashchange', () => render());
+if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+  try { await fetch('/api/athena-dev-session', { method: 'POST', credentials: 'same-origin' }); } catch { /* normal auth handles non-local environments */ }
+}
 try {
   const result = await api('/health');
   document.querySelector('#connection').textContent = `${result.meta.mode === 'demo' ? 'Fictional demo' : 'Atlas connected'} · AI ${result.data.ai}`;

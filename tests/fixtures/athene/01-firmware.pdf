@@ -1,0 +1,54 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 331 >>
+stream
+BT /F1 11 Tf 40 760 Td 15 TL
+(Argos firmware implementation) Tj T*
+(On November 7, 2026, Darun implemented the battery monitor firmware state machine and) Tj T*
+(CAN fault messages. Darun completed bench validation of undervoltage detection. Teja) Tj T*
+(wrote the Python telemetry decoder and documented its JSON fields.) Tj T*
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 374 >>
+stream
+BT /F1 11 Tf 40 760 Td 15 TL
+(Validation and remaining work) Tj T*
+(Darun and Teja ran battery monitor integration tests together. Sriram reviewed the) Tj T*
+(event log schema; this review does not establish that Sriram wrote firmware. Active) Tj T*
+(cell balancing is planned and has not been implemented. A draft threshold of 3.0 V) Tj T*
+(per cell was recorded.) Tj T*
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000000699 00000 n 
+0000000825 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1250
+%%EOF

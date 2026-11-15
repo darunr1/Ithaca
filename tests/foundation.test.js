@@ -146,13 +146,14 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
     const renderers = [views[0].renderHome, views[1].renderAthena, views[2].renderKleos, views[3].renderCourt, views[4].renderBow, () => views[5].renderMember('member-leo')];
     const output = await Promise.all(renderers.map(render => render()));
     for (const page of output) { assert.ok(page.includes('<h1>')); assert.ok(!page.includes('undefined')); }
+    assert.ok(output[1].includes('Ask Athena'));
+    assert.ok(!output[1].includes('Proposed contributions'));
     assert.ok(output[0].includes('660'));
     assert.ok(!output[0].includes('Meridian'), 'Home stays scoped to Aster clubs');
     assert.ok(output[2].includes('href="#member/member-leo"'), 'ranking names link to member stats');
     assert.ok(output[2].includes('Semester by semester'), 'default demo identity is an officer');
     assert.ok(!output[2].includes('Most contributions') && !output[2].includes('Universities by contributions'), 'leaderboard panels removed');
     assert.ok(output[5].includes('Leo Marin') && output[5].includes('Fall 2026') && output[5].includes('Spring 2026'));
-    assert.ok(output[1].includes('Approve · planned'));
     assert.ok(!output[3].includes('Sana Reed'));
     assert.ok((await views[2].renderKleos('week')).includes('70'));
     const termPage = await views[2].renderKleos('2026-spring');

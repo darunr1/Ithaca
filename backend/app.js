@@ -5,10 +5,11 @@ import { createRepository } from './repositories/records.js';
 import { createWorkspace } from './services/workspace.js';
 import { readRoutes } from './routes/read.js';
 import { plannedRoutes } from './routes/planned.js';
+import { atheneRoutes } from './athene/routes.js';
 import { ledgerRoutes } from './routes/ledger.js';
 import { createCollegeDirectory } from './services/colleges.js';
 import { createCatalog } from './services/catalog.js';
-export function createApp({ config, db = null }) {
+export function createApp({ config, db = null, athene = {} }) {
   if (config.DATA_MODE === 'atlas' && !db) throw new Error('Atlas mode requires a connected database.');
   const app = express();
   app.disable('x-powered-by');
@@ -22,7 +23,14 @@ export function createApp({ config, db = null }) {
       send(res, { status: 'ok', database: db ? 'connected' : 'disabled', ai: config.AI_MODE, authentication: 'not-implemented' });
     } catch { next(Object.assign(new Error('Database unavailable; no fallback was used.'), { status: 503, code: 'DATABASE_UNAVAILABLE' })); }
   });
+  app.post('/api/athena-dev-session', (req, res, next) => {
+    const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+    if (!config.ATHENE_ENABLED || !config.ATHENE_DEV_TOKEN || config.NODE_ENV === 'production' || !local) return next(Object.assign(new Error('Development session is unavailable.'), { status: 404, code: 'NOT_FOUND' }));
+    res.setHeader('Set-Cookie', `athena_dev_session=${encodeURIComponent(config.ATHENE_DEV_TOKEN)}; HttpOnly; SameSite=Lax; Path=/api/projects`);
+    res.json({ data: { memberId: config.ATHENE_DEV_MEMBER_ID }, meta: { feature: 'athena', developmentOnly: true } });
+  });
   app.use('/api', readRoutes({ repository, workspace, send, config }));
+  app.use('/api/projects/:projectId/athene', atheneRoutes({ db, config, ...athene }));
   app.use('/api', ledgerRoutes({ workspace, send }));
   app.use('/api', plannedRoutes());
   app.use('/api', (req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API route not found.' } }));
