@@ -1,6 +1,6 @@
 // Every person, organization, source excerpt and accomplishment in this file is fictional.
 import { weekStart } from '../backend/services/scoring.js';
-export const universities = [{ id: 'uni-aster', name: 'Aster University', timezone: 'America/Chicago', semesterStart: '2026-08-24' }];
+export const universities = [{ id: 'uni-aster', name: 'Aster University', state: 'Texas', timezone: 'America/Chicago', semesterStart: '2026-08-24' }];
 export const clubs = [
   { id: 'club-rocketry', universityId: 'uni-aster', name: 'Aster Rocketry', category: 'Avionics & flight systems', project: 'Project Argos · flight computer', officerIds: ['member-iris', 'member-leo'] },
   { id: 'club-electric', universityId: 'uni-aster', name: 'Aster Electric Racing', category: 'Battery systems & mobility', project: 'Helios EV · battery pack', officerIds: ['member-nora'] },

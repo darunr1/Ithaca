@@ -58,7 +58,7 @@ Examples show `data` only; use the envelope above. Full reusable envelopes are i
 {"range":"all","start":"0000-01-01","rows":[{"memberId":"member-leo","name":"Leo Marin","points":190,"rank":1},{"memberId":"member-iris","name":"Iris Vale","points":130,"rank":2},{"memberId":"member-sana","name":"Sana Reed","points":100,"rank":3}],"caveat":"Activity within this club; not a measure of engineering ability."}
 ```
 
-`GET /recruiter/profiles?skill=CAN` → array of `{member, contributions}`. Member fields are allowlisted to `id`, `name`, `major`, `year`, `skills`, `universityId`, `clubIds`. No email or other contact details. Evidence is the approved contribution shape above. Specific hidden/nonexistent profiles return the same 404. Internal profile routes must not be used by recruiter UI.
+`GET /recruiter/profiles?skill=CAN` → array of `{member, university, clubs, contributions}`. Member fields are allowlisted to `id`, `name`, `major`, `year`, `skills`, `universityId`, `clubIds`. No email or other contact details. Evidence is the approved contribution shape above. Specific hidden/nonexistent profiles return the same 404. Internal profile routes must not be used by recruiter UI.
 
 ## Planned writes — target JSON for frontend mocks
 
@@ -163,3 +163,21 @@ Target 201:
 ```
 
 Verify approved company and current member opt-in. Duplicate pending request returns 409. Return no contact details. Student acceptance/decline endpoints require a separate authenticated contract; requesting does not send an email or grant access.
+
+## Court search and future profile integration
+
+`GET /recruiter/profiles` accepts optional `name`, `skill`, `major`, `university`, `club`, `year`, and the existing exact `clubId` filter. Text filters are trimmed, case-insensitive literal substrings (maximum 80 characters); filters combine with AND. `year` is an exact current year of study, an integer from 1 through 4: Freshman, Sophomore, Junior, and Senior. The UI offers these four labels. Text fields offer styled, keyboard-accessible typing suggestions from opted-in discovery results; users can also enter custom text. Blank text filters are ignored. Skills search approved contribution skills, not self-reported member skills. Unknown or malformed parameters return 400.
+
+Each result includes the existing allowlisted `member`, approved `contributions`, `university: {id, name} | null`, and `clubs: [{id, name}]`. Only opted-in members are returned, including for name searches. Missing academic information is displayed with a fallback. No contact details are exposed.
+
+`frontend/recruiting/discovery.js` is the frontend service boundary. When user profiles are implemented, map their public real name to `member.name` and retain member IDs, academic fields, university/club references, and discovery consent. Update the repository/service behind this endpoint or the adapter without coupling the Court view to authentication or profile storage. Current records come from demo fixtures or Atlas; this feature does not create accounts.
+
+### CSV suggestion catalogs
+
+`GET /recruiter/discovery-options` returns `{major: string[], university: string[], club: string[]}` inside the standard envelope. Values are trimmed, deduplicated and sorted from `demo-data/engineering_majors.csv` (`Engineering_Major`) and `demo-data/College_Directory_20261114.csv` (`Name of Institution`). Clubs come from `demo-data/top_us_engineering_clubs.csv` (`Club / Organization Name`) and are combined with existing opted-in member clubs. Only names are exposed, not the remaining directory columns. Catalogs are cached until server restart. Replace these files with the same headers and restart to refresh them. These are reference suggestions, not member profiles; choosing one may yield no students. Existing opted-in academic values are also included by the UI. University searches support up to 200 characters. Each dropdown displays at most 12 matches; typing narrows the catalog.
+
+### University state filter
+
+`state` is an optional university-state filter on recruiter discovery. Like other text filters it is trimmed, case-insensitive, accepts partial state names up to 80 characters, and combines with all other filters using AND. Use full names from the suggestions rather than postal abbreviations. Universities store optional `state` as a full state name. Discovery exposes `university.state` (null when unavailable); unknown states do not match a state filter. Future profile integration should set this field on the university record, not expose home addresses. The fictional Aster University is in Texas. Existing Atlas university records need this field populated before they match a state filter.
+
+`demo-data/us_states.csv` contains the 50 US states (`State,Abbreviation`). The discovery-options endpoint includes `state: string[]` from its State column. The Court uses the same styled, keyboard-accessible autocomplete and retains the four Freshman/Sophomore/Junior/Senior levels. CSV catalogs require a server restart after edits.

@@ -3,6 +3,7 @@ import { e } from './shared/ui.js';
 import { renderHome } from './core/home.js';
 import { renderAthena } from './core/athena.js';
 import { renderKleos } from './core/kleos.js';
+import { bindCourtSuggestions } from './recruiting/suggestions.js';
 import { renderCourt } from './recruiting/court.js';
 import { renderBow } from './recruiting/bow.js';
 const pages = { home: ['Ithaca Home', renderHome], athena: ['Athena', renderAthena], kleos: ['Kleos Ledger', renderKleos], court: ['The Court', renderCourt], bow: ['Bow', renderBow] };
@@ -20,8 +21,10 @@ async function render(argument) {
     const html = await view(argument);
     if (currentRevision !== revision) return;
     content.innerHTML = html;
+    bindCourtSuggestions(content);
     document.querySelector('#ranking-range')?.addEventListener('change', event => render(event.target.value));
-    document.querySelector('#skill-search')?.addEventListener('submit', event => { event.preventDefault(); render(new FormData(event.target).get('skill')); });
+    document.querySelector('#court-search')?.addEventListener('submit', event => { event.preventDefault(); render(Object.fromEntries(new FormData(event.target))); });
+    document.querySelector('#court-clear')?.addEventListener('click', () => render({}));
   } catch (error) {
     if (currentRevision !== revision) return;
     content.innerHTML = `<div class="notice" role="alert">${e(error.message)} No replacement demo data was loaded.</div><button id="retry">Try again</button>`;

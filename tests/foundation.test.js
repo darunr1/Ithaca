@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { parseCsv } from '../backend/services/discovery-options.js';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readConfig } from '../backend/config.js';
@@ -84,11 +85,40 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
   assert.deepEqual(all.data.rows.map(r => r.points), [190, 130, 100]);
   const week = await get('/api/clubs/club-rocketry/rankings?range=week');
   assert.equal(week.data.rows[0].points, 70);
+  const options = await get('/api/recruiter/discovery-options');
+  assert.equal(options.data.state.length, 50);
+  assert.ok(options.data.state.includes('Texas'));
+  assert.ok(options.data.major.includes('Mechanical Engineering'));
+  assert.ok(options.data.club.includes('National Society of Black Engineers'));
+  assert.equal(new Set(options.data.club).size, options.data.club.length);
+  assert.ok(options.data.university.includes('Aaniiih Nakoda College'));
+  assert.ok(options.data.university.length > 4000);
+  assert.equal(new Set(options.data.university).size, options.data.university.length);
   const discovery = await get('/api/recruiter/profiles');
   assert.ok(!discovery.data.some(p => p.member.id === 'member-sana'));
   assert.ok(discovery.data.every(p => !('email' in p.member) && !('visibleToCompanies' in p.member)));
   assert.equal((await fetch(base + '/api/recruiter/profiles/member-sana')).status, 404);
   assert.equal((await get('/api/recruiter/profiles?skill=CAN')).data.length, 1);
+  for (const [query, ids] of [
+    ['name=LEO', ['member-leo']],
+    ['major=electrical', ['member-iris', 'member-nora']],
+    ['university=aster', ['member-iris', 'member-leo', 'member-nora', 'member-eli']],
+    ['year=4', ['member-iris']],
+    ['club=racing', ['member-nora']],
+    ['name=leo&skill=can&major=computer&university=aster&year=3&club=rocketry', ['member-leo']],
+    ['name=leo&year=4', []],
+    ['name=sana', []],
+    ['state=texas&name=leo', ['member-leo']],
+    ['state=california', []],
+    ['state=%20TEXAS%20&year=4', ['member-iris']],
+    ['university=missing', []]
+  ]) assert.deepEqual((await get(`/api/recruiter/profiles?${query}`)).data.map(p => p.member.id), ids);
+  for (const query of ['year=abc', 'year=0', 'year=5', 'year=3.5', 'name=a&name=b', `major=${'a'.repeat(81)}`]) {
+    assert.equal((await fetch(`${base}/api/recruiter/profiles?${query}`)).status, 400);
+  }
+  assert.deepEqual(discovery.data[0].university, { id: 'uni-aster', name: 'Aster University', state: 'Texas' });
+  assert.deepEqual(discovery.data[0].clubs, [{ id: 'club-rocketry', name: 'Aster Rocketry' }]);
+
   assert.equal((await fetch(base + '/api/clubs/club-rocketry/rankings?range=invalid')).status, 400);
   assert.equal((await fetch(base + '/api/clubs/missing/roster')).status, 404);
   assert.equal((await fetch(base + '/api/no-route')).status, 404);
@@ -114,6 +144,23 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
     assert.ok(!output[3].includes('Sana Reed'));
     assert.ok((await views[2].renderKleos('week')).includes('70'));
     assert.ok((await views[3].renderCourt('no-such-skill')).includes('No opted-in profiles'));
+    const filteredCourt = await views[3].renderCourt({ name: 'Leo', year: '3', club: 'rocketry' });
+    assert.ok(filteredCourt.includes('1 student found'));
+    for (const label of ['Freshman', 'Sophomore', 'Junior', 'Senior']) assert.ok(filteredCourt.includes(label));
+    assert.ok(!filteredCourt.includes('value="5"'));
+    assert.ok(filteredCourt.includes('>Junior</option>'));
+    assert.ok(filteredCourt.includes('id="court-skill-options" class="court-options" role="listbox"'));
+    assert.ok(filteredCourt.includes('data-value="Texas"'));
+    assert.ok(filteredCourt.includes('data-value="CAN"'));
+    assert.ok(filteredCourt.includes('data-value="National Society of Black Engineers"'));
+    assert.ok(filteredCourt.includes('data-value="Aster Rocketry"'));
+    assert.ok(filteredCourt.includes('data-value="Iris Vale"'));
+    assert.ok(!filteredCourt.includes('data-value="Sana Reed"'));
+    assert.ok(filteredCourt.includes('Leo Marin'));
+    assert.ok(!filteredCourt.includes('<h2>Iris Vale</h2>'));
+    for (const field of ['name', 'skill', 'major', 'university', 'year', 'club', 'state']) assert.ok(filteredCourt.includes(`name="${field}"`));
+    assert.ok((await views[3].renderCourt({ name: '<script>' })).includes('&lt;script&gt;'));
+
   } finally { globalThis.fetch = originalFetch; }
 });
 test('Atlas failures propagate instead of returning fixtures', async t => {
@@ -138,4 +185,11 @@ test('setup creates all 11 collections and attendance duplicate guard', async ()
 test('Git excludes environment secrets and uploads, but keeps the template', () => {
   const ignored = execFileSync('git', ['check-ignore', '--stdin'], { input: '.env\n.env.production\nuploads/notes.pdf\n.env.example\n', encoding: 'utf8' });
   assert.ok(ignored.includes('.env.production')); assert.ok(ignored.includes('uploads/notes.pdf')); assert.ok(!ignored.includes('.env.example'));
+});
+
+test('suggestion CSV handles quoted values, newlines, BOM and escaped quotes', () => {
+  assert.deepEqual(parseCsv('\uFEFFName,Other\r\n"College, Main",x\r\n"A ""quoted"" name",y\n"Two\nlines",z'), [
+    ['Name', 'Other'], ['College, Main', 'x'], ['A "quoted" name', 'y'], ['Two\nlines', 'z']
+  ]);
+  assert.throws(() => parseCsv('"unclosed'), /Unclosed quote/);
 });

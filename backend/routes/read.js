@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { httpError } from '../services/workspace.js';
+import { discoveryOptions } from '../services/discovery-options.js';
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
 export function readRoutes({ repository, workspace, send, config }) {
   const router = Router();
+  router.get('/recruiter/discovery-options', async (req, res) => send(res, await discoveryOptions()));
   router.get('/clubs', async (req, res) => send(res, await repository.list('clubs')));
   router.get('/clubs/:id/roster', async (req, res) => send(res, await workspace.roster(id.parse(req.params.id))));
   router.get('/clubs/:id/sessions', async (req, res) => { await workspace.requireRecord('clubs', id.parse(req.params.id)); send(res, await repository.list('sessions', { clubId: req.params.id })); });
@@ -14,7 +16,8 @@ export function readRoutes({ repository, workspace, send, config }) {
     send(res, await workspace.rankings(id.parse(req.params.id), range, config.DATA_MODE === 'demo' ? '2026-11-14' : undefined));
   });
   router.get('/recruiter/profiles', async (req, res) => {
-    const query = z.object({ clubId: id.optional(), skill: z.string().max(80).optional() }).strict().parse(req.query);
+    const text = z.string().trim().max(80).optional();
+    const query = z.object({ clubId: id.optional(), skill: text, name: text, major: text, university: z.string().trim().max(200).optional(), club: text, state: text, year: z.string().regex(/^[1-4]$/).transform(Number).optional() }).strict().parse(req.query);
     send(res, await workspace.discovery(query));
   });
   router.get('/recruiter/profiles/:id', async (req, res) => {
