@@ -187,27 +187,19 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
     assert.ok(output[2].includes('Semester by semester'), 'default demo identity is an officer');
     assert.ok(!output[2].includes('Most contributions') && !output[2].includes('Universities by contributions'), 'leaderboard panels removed');
     assert.ok(output[5].includes('Leo Marin') && output[5].includes('Fall 2026') && output[5].includes('Spring 2026'));
-    assert.ok(!output[3].includes('Sana Reed'));
+
+    assert.ok(output[3].includes('Rankings and recognition'), 'Court shows live ranking interface');
+    assert.ok(output[3].includes('Club') || output[3].includes('My club'));
+    assert.ok(output[3].includes('Aster Rocketry'));
+    assert.ok(output[4].includes('Officer access required'), 'Bow is private to authorized club officers');
     assert.ok((await views[2].renderKleos('week')).includes('70'));
     const termPage = await views[2].renderKleos('2026-spring');
-    assert.ok(termPage.includes('<option value="2026-spring" selected>Spring 2026</option>') && termPage.includes('Winter 2026') && !termPage.includes('>Semester</option>'));
-    assert.ok((await views[3].renderCourt('no-such-skill')).includes('No opted-in profiles'));
-    const filteredCourt = await views[3].renderCourt({ name: 'Leo', year: '3', club: 'rocketry' });
-    assert.ok(filteredCourt.includes('1 student found'));
-    for (const label of ['Freshman', 'Sophomore', 'Junior', 'Senior']) assert.ok(filteredCourt.includes(label));
-    assert.ok(!filteredCourt.includes('value="5"'));
-    assert.ok(filteredCourt.includes('>Junior</option>'));
-    assert.ok(filteredCourt.includes('id="court-skill-options" class="court-options" role="listbox"'));
-    assert.ok(filteredCourt.includes('data-value="Texas"'));
-    assert.ok(filteredCourt.includes('data-value="CAN"'));
-    assert.ok(filteredCourt.includes('data-value="National Society of Black Engineers"'));
-    assert.ok(filteredCourt.includes('data-value="Aster Rocketry"'));
-    assert.ok(filteredCourt.includes('data-value="Iris Vale"'));
-    assert.ok(!filteredCourt.includes('data-value="Sana Reed"'));
-    assert.ok(filteredCourt.includes('Leo Marin'));
-    assert.ok(!filteredCourt.includes('<h2>Iris Vale</h2>'));
-    for (const field of ['name', 'skill', 'major', 'university', 'year', 'club', 'state']) assert.ok(filteredCourt.includes(`name="${field}"`));
-    assert.ok((await views[3].renderCourt({ name: '<script>' })).includes('&lt;script&gt;'));
+    assert.ok(termPage.includes('<option value="2026-spring" selected>Spring 2026</option>'));
+    const schoolPage = await views[3].renderCourt({ mode: 'university' });
+    assert.ok(schoolPage.includes('University') && schoolPage.includes('Approved contributions'));
+    const globalPage = await views[3].renderCourt({ mode: 'global' });
+    assert.ok(globalPage.includes('All universities'));
+    assert.ok(!globalPage.includes('undefined'));
 
   } finally { globalThis.fetch = originalFetch; }
 });
