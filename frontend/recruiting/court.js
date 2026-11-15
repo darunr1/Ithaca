@@ -1,7 +1,8 @@
 import { api } from '../shared/api.js';
 import { e } from '../shared/ui.js';
+import { sampleCourtPage } from '../shared/sample-pages.js';
 
-const state = { mode: 'clubs', clubId: '', universityId: '' };
+const state = { mode: 'clubs', clubId: '', universityId: '', preview: null, sampleClubId: 'sample-ithaca', sampleUniversityId: 'sample-utd' };
 function scoreRows(rows, metric, who) {
   if (!rows.length) return '<div class="module-empty-state"><strong>No ranked activity yet</strong><p>Rankings appear automatically after officers approve real contributions or record attendance. No sample scores are inserted.</p></div>';
   return `<div class="court-ranking-list">${rows.map((item, index) => `<article class="court-ranking-row ${index < 3 ? 'court-top-three' : ''}">
@@ -26,12 +27,15 @@ export async function renderCourt(input = {}) {
   const clubRows = clubRanks?.rows || [];
   const schoolRows = schoolRanks?.rows || [];
   const globalRows = leaderboard.rows || [];
+  const sampleMode = state.preview === true || (state.preview === null && Boolean(me.profile) && !clubRows.length && !schoolRows.length && !globalRows.length);
+  if (sampleMode) return sampleCourtPage({ mode: state.mode, clubId: state.sampleClubId, universityId: state.sampleUniversityId });
   const rows = state.mode === 'clubs' ? clubRows : state.mode === 'university' ? schoolRows : globalRows;
   const metric = state.mode === 'clubs' ? 'points' : 'contributions';
   const title = state.mode === 'clubs' ? club?.name || 'Your club' : state.mode === 'university' ? schoolRanks?.university?.name || visibleSchool?.name || me.profile?.universityName || 'Your university' : 'Across participating universities';
   const selected = state.mode === 'clubs' ? 'Club' : state.mode === 'university' ? 'University' : 'Cross-university';
   return `<div class="module-page module-court">
     <header class="module-hero court-hero"><div><span class="module-kicker">THE COURT / ENGINEERING RECOGNITION</span><h1>Where the work speaks.</h1><p>Discover the people and organizations making measurable contributions, backed by the work actually recorded in Ithaca.</p></div><div class="module-hero-symbol" aria-hidden="true">◎</div></header>
+    ${me.profile ? '<div class="module-live-preview-control"><span>Live club and university records · no sample results</span><button type="button" data-sample-show-demo>Explore populated demo</button></div>' : ''}
     <div class="module-heading"><div><span>LEADERBOARDS / RECORDED ACTIVITY</span><h2>Rankings and recognition</h2></div><p>Never an assessment of someone's potential or engineering ability.</p></div>
     <div class="court-tabs" role="group" aria-label="Ranking scope">
       <button type="button" data-court-mode="clubs" ${state.mode === 'clubs' ? 'aria-pressed="true"' : ''}>My club</button>
@@ -55,6 +59,14 @@ export async function renderCourt(input = {}) {
   </div>`;
 }
 export function bindCourt(root, rerender) {
+  root.querySelector('[data-sample-show-live]')?.addEventListener('click', () => rerender({ preview: false }));
+  root.querySelector('[data-sample-show-demo]')?.addEventListener('click', () => rerender({ preview: true }));
+  if (root.querySelector('.module-sample-page')) {
+    root.querySelectorAll('[data-court-mode]').forEach(button => button.addEventListener('click', () => rerender({ mode: button.dataset.courtMode, preview: true })));
+    root.querySelector('#court-university')?.addEventListener('change', event => rerender({ sampleUniversityId: event.target.value, preview: true }));
+    root.querySelector('#court-club')?.addEventListener('change', event => rerender({ sampleClubId: event.target.value, preview: true }));
+    return;
+  }
   root.querySelectorAll('[data-court-mode]').forEach(button => button.addEventListener('click', () => rerender({ mode: button.dataset.courtMode })));
   root.querySelector('#court-university')?.addEventListener('change', event => rerender({ universityId: event.target.value }));
   root.querySelector('#court-club')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
