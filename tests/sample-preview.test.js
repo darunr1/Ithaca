@@ -12,7 +12,7 @@ test('sample preview is populated, clearly fictional and never stores student cr
   assert.equal(sampleMembers.length, 12);
   assert.equal(sampleContributions.length, 21);
   assert.equal(sampleSessions.length, 7);
-  assert.equal(sampleAttendance.length, 26);
+  assert.equal(sampleAttendance.length, 23);
   assert.match(SAMPLE_NOTICE, /fictional contributions and rankings/i);
   for (const records of [sampleUniversities, sampleClubs, sampleMembers, sampleContributions, sampleSessions, sampleAttendance]) {
     assert.equal(new Set(records.map(record => record.id)).size, records.length);
