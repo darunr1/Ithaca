@@ -96,6 +96,25 @@ export function atheneRoutes({ db, config, authenticate, service }) {
     try { const result = await service.reprocess(req.atheneMemberId, req.params.projectId, id.parse(req.params.documentId)); res.status(result.status === 'failed' ? 207 : result.status === 'processing' ? 202 : 200); send(res, result); }
     catch (error) { next(error); } finally { req.releaseAthene?.(); }
   });
+  router.get('/insights', async (req, res) => {
+    send(res, { insights: await service.listInsights(req.atheneMemberId, req.params.projectId) });
+  });
+  router.post('/insights', async (req, res, next) => {
+    try {
+      const { mode } = z.object({ mode: z.enum(['snapshot', 'risks', 'conflicts', 'handoff']) }).strict().parse(req.body);
+      res.status(201); send(res, await service.analyze(req.atheneMemberId, req.params.projectId, mode));
+    } catch (error) { next(error); } finally { req.releaseAthene?.(); }
+  });
+  router.post('/insights/:insightId/review', async (req, res, next) => {
+    try {
+      const insightId = id.parse(req.params.insightId);
+      const { status, note } = z.object({
+        status: z.enum(['reviewed', 'needs_followup']),
+        note: z.string().trim().max(500).default('')
+      }).strict().parse(req.body);
+      send(res, await service.reviewInsight(req.atheneMemberId, req.params.projectId, insightId, status, note));
+    } catch (error) { next(error); } finally { req.releaseAthene?.(); }
+  });
   for (const contribution of [false, true]) router.post(contribution ? '/contributions/query' : '/query', async (req, res, next) => {
     try {
       const input = (contribution ? z.object({ person: z.string().trim().min(1).max(120).optional(), question: question.optional() }).strict().refine(v => v.person || v.question, 'Provide person or question.') : z.object({ question }).strict()).parse(req.body);
