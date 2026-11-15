@@ -82,6 +82,19 @@ export function organizationRoutes({ db, send }) {
     }
     send(res, { status: action === 'accept' ? 'accepted' : 'declined', clubId: invitation.clubId });
   });
+  router.get('/:clubId/invitations', async (req, res) => {
+    const clubId = id.parse(req.params.clubId);
+    await officer(req, clubId);
+    const invites = await db.collection('clubInvitations').find(
+      { clubId, status: 'pending' }, { projection: { _id: 0 } }
+    ).sort({ createdAt: -1 }).limit(30).toArray();
+    const invitations = await Promise.all(invites.map(async ({ id, invitedMemberId, createdAt, status }) => {
+      const target = await db.collection('members').findOne({ id: invitedMemberId });
+      return { id, invitedMemberId, name: target?.name || 'Student', createdAt, status };
+    }));
+    send(res, { invitations });
+  });
+
   router.post('/:clubId/invitations', async (req, res) => {
     const clubId = id.parse(req.params.clubId);
     const { club, actor } = await officer(req, clubId);

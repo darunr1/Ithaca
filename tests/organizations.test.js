@@ -124,6 +124,12 @@ test('real clubs, invitations, roster metrics and two-party officer succession',
   const invitation = await call('alice', `/organizations/${clubId}/invitations`, { memberId: 'bob' });
   assert.equal(invitation.status, 201);
   const inviteId = invitation.data.data.invitation.id;
+  const sent = await call('alice', `/organizations/${clubId}/invitations`);
+  assert.equal(sent.status, 200);
+  assert.equal(sent.data.data.invitations.length, 1);
+  assert.equal(sent.data.data.invitations[0].name, 'bob');
+  assert.equal((await call('bob', `/organizations/${clubId}/invitations`)).status, 403);
+  assert.equal((await call('outsider', `/organizations/${clubId}/invitations`)).status, 404);
   assert.equal((await call('bob', '/organizations/invitations')).data.data.length, 1);
   assert.equal((await call('outsider', `/organizations/invitations/${inviteId}/respond`, { action:'accept' })).status, 404);
   assert.equal((await call('bob', `/organizations/invitations/${inviteId}/respond`, { action:'accept' })).status, 200);

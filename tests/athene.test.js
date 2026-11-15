@@ -46,7 +46,16 @@ function memoryRepository() {
     async saveChunks(records) { for (const c of records) chunks.set(c.runId + c.chunkId, c); },
     async complete(record, details) { Object.assign(docs.get(record.id), details, { status: 'ready', activeRunId: record.leaseId }); },
     async markFailed(record, error) { Object.assign(docs.get(record.id), { status: 'failed', error }); },
-    async search() { return this.results; }
+    async search() { return this.results; },
+    reports: [],
+    async saveInsight(report) { this.reports.push(structuredClone(report)); },
+    async listInsights(projectId) { return this.reports.filter(report => report.projectId === projectId); },
+    async reviewInsight(projectId, id, actorId, status, reviewNote) {
+      const report = this.reports.find(r => r.id === id && r.projectId === projectId);
+      if (!report) throw Object.assign(new Error('Not found'), { code: 'INSIGHT_NOT_FOUND', status: 404 });
+      Object.assign(report, { status, reviewNote, reviewedBy: actorId });
+      return structuredClone(report);
+    }
   };
 }
 function testService(overrides = {}) {
@@ -248,7 +257,7 @@ test('setup touches only Athene collections and creates unique idempotency index
   const collections = []; const indexes = []; const searches = [];
   const db = { listCollections() { return { async toArray() { return []; } }; }, async createCollection(name) { collections.push(name); }, collection(name) { return { async createIndex(key, options) { indexes.push({ name, key, options }); }, listSearchIndexes() { return { async toArray() { return []; } }; }, async createSearchIndex(value) { searches.push(value); } }; } };
   await setupAthene(db, config, true);
-  assert.deepEqual(collections.sort(), ['atheneChunks', 'atheneDocuments', 'atheneFiles']);
+  assert.deepEqual(collections.sort(), ['atheneChunks', 'atheneDocuments', 'atheneFiles', 'atheneInsights']);
   assert.ok(indexes.some(i => i.key.contentHash && i.options.unique));
   assert.deepEqual(searches[0].definition, vectorDefinition(config));
 });
@@ -367,4 +376,45 @@ test('Athena upload route is mounted before the generic 404 handler and receives
   const payload = await uploaded.json();
   assert.equal(payload.data.documents.length, 1);
   assert.equal((await fetch(`${base}/api/projects/club-a/athene/documents`, { headers: { Authorization: `Bearer ${localConfig.ATHENE_DEV_TOKEN}` } })).status, 200);
+});
+
+test('Athena research modes retrieve multiple evidence perspectives, save scoped reports and require officer review', async () => {
+  const { service, repository, calls } = testService();
+  const report = await service.analyze('member', 'club-a', 'risks');
+  assert.equal(report.mode, 'risks');
+  assert.equal(report.retrieval.searches, 2);
+  assert.equal(report.retrieval.documents, 1);
+  assert.equal(report.retrieval.retrievedChunks, 1);
+  assert.equal(report.citations[0].filename, 'firmware.pdf');
+  assert.equal(report.status, 'open');
+  assert.equal(calls.embeddings, 1);
+  assert.equal(calls.answers, 1);
+  assert.equal((await service.listInsights('member', 'club-a')).length, 1);
+  await assert.rejects(service.reviewInsight('member', 'club-a', report.id, 'reviewed'), { status: 403 });
+  const reviewed = await service.reviewInsight('officer', 'club-a', report.id, 'needs_followup', 'Inspect test logs');
+  assert.equal(reviewed.reviewNote, 'Inspect test logs');
+  assert.equal(repository.reports[0].status, 'needs_followup');
+  await assert.rejects(service.analyze('outsider', 'club-a', 'snapshot'), { status: 404 });
+  await assert.rejects(service.analyze('member', 'club-a', 'made-up-mode'), { code: 'INVALID_INSIGHT_MODE' });
+});
+
+test('Athena report API validates modes, saves reviewed findings and preserves member/officer roles', async t => {
+  const { service } = testService();
+  const localConfig = { ...config, ATHENE_ENABLED: true, ATHENE_DEV_TOKEN: 't'.repeat(32), ATHENE_DEV_MEMBER_ID: 'officer' };
+  const base = await listen(t, createApp({ config: localConfig, athene: { service } }));
+  const root = `${base}/api/projects/club-a/athene`;
+  const headers = { Authorization: `Bearer ${localConfig.ATHENE_DEV_TOKEN}`, 'Content-Type': 'application/json' };
+  const post = (url, body) => fetch(root + url, { method: 'POST', headers, body: JSON.stringify(body) });
+  assert.equal((await post('/insights', { mode: 'unknown' })).status, 400);
+  assert.equal((await post('/insights', { mode: 'risks', projectId: 'other' })).status, 400);
+  const generated = await post('/insights', { mode: 'snapshot' });
+  assert.equal(generated.status, 201);
+  const report = (await generated.json()).data;
+  assert.equal(report.retrieval.searches, 2);
+  const recent = await (await fetch(root + '/insights', { headers })).json();
+  assert.equal(recent.data.insights[0].id, report.id);
+  const reviewed = await post(`/insights/${report.id}/review`, { status: 'reviewed', note: 'Reviewed by club officer' });
+  assert.equal(reviewed.status, 200);
+  assert.equal((await reviewed.json()).data.status, 'reviewed');
+  assert.equal((await post(`/insights/${report.id}/review`, { status: 'approved', note: '' })).status, 400);
 });
