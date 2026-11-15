@@ -236,3 +236,6 @@ body.club-workspace .athena-report-review button{justify-self:start;background:#
 .athena-report-review [role=status]{color:#6373a7;font-size:11px}
 @media(max-width:1120px){.athena-mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.athena-mode-grid{grid-template-columns:1fr}.athena-report>details>summary{flex-wrap:wrap}.module-member-id{align-items:flex-start}}
+
+body.club-workspace .athena-probe-button{margin-top:13px;background:#eaf0ff;color:#4d61b5;border-radius:8px;padding:9px 12px;font-size:10px;box-shadow:none}
+body.club-workspace .athena-probe-button:hover{background:#dfe7ff}
