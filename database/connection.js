@@ -9,14 +9,18 @@ export async function connectDatabase(config) {
   try { return await pending; } catch (error) { cached.delete(key); throw error; }
 }
 async function connectFresh(config) {
-  const client = new MongoClient(config.MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+  let client;
   try {
+    client = new MongoClient(config.MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
     await client.connect();
     const db = client.db(config.MONGODB_DB);
     await db.command({ ping: 1 });
     return { db, close: () => client.close() };
   } catch (error) {
-    await client.close();
-    throw new Error('Atlas connection failed; no demo fallback was used.', { cause: error });
+    await client?.close();
+    throw Object.assign(new Error('Atlas connection failed; no demo fallback was used.', { cause: error }), {
+      code: 'ATLAS_CONNECTION_FAILED',
+      safeToLog: true
+    });
   }
 }

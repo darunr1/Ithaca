@@ -102,6 +102,32 @@ Node 24 LTS is the supported local runtime. `npm start` still runs `backend/serv
 
 No ElevenLabs or Vultr integrations. Confirm official track eligibility and how many categories can be entered; this document records the user's targets, not verified prize availability.
 
+## Startup diagnostics
+
+The Vercel function writes one structured `ithaca_serverless_startup_failed` event per distinct failure in a warm instance. It logs the startup stage, a stable code, affected environment-variable names, allowed mode values, and boolean presence flags. It never logs environment-variable values, URLs, connection strings, tokens, API keys, provider responses, or raw unknown error messages.
+
+Configuration-stage codes that return `DEPLOYMENT_CONFIGURATION_ERROR` are:
+
+| Code | Validation |
+| --- | --- |
+| `CONFIG_SCHEMA_INVALID` | An enum, boolean string, numeric range, or required string parsed by Zod is invalid. `fields` names the affected variables. |
+| `ATLAS_URI_REQUIRED` | `DATA_MODE=atlas` without `MONGODB_URI`. |
+| `GEMINI_KEY_REQUIRED` | `AI_MODE=live` without `GEMINI_API_KEY`. |
+| `PRODUCTION_SUPABASE_REQUIRED` | Production Atlas mode is not using `AUTH_MODE=supabase`. |
+| `SUPABASE_REQUIRES_ATLAS` | Supabase authentication is selected without `DATA_MODE=atlas`. |
+| `SUPABASE_URL_INVALID` | `SUPABASE_URL` is missing, malformed, or not HTTPS. |
+| `SUPABASE_PUBLISHABLE_KEY_REQUIRED` | The browser-safe publishable key is missing. |
+| `AUTH_ISSUER_MISMATCH` | The issuer is not exactly `<SUPABASE_URL origin>/auth/v1`. |
+| `AUTH_JWKS_URL_MISMATCH` | The JWKS URL is not exactly `<SUPABASE_URL origin>/auth/v1/.well-known/jwks.json`. |
+| `AUTH_AUDIENCE_REQUIRED` | `AUTH_AUDIENCE` is empty. |
+| `AUTH_AUDIENCE_INVALID` | Supabase audience is not exactly `authenticated`. |
+| `ATHENE_CHUNK_RANGE_INVALID` | Chunk overlap is greater than or equal to chunk size. |
+| `ATHENE_LIVE_MODES_REQUIRED` | Athena is enabled without both Atlas and live Gemini. |
+| `ATHENE_DEV_TOKEN_FORBIDDEN` | A development token violates its loopback/non-production/demo-database restrictions. Never set it in Vercel. |
+| `ATHENE_AUTH_REQUIRED` | Enabled Athena lacks complete HTTPS JWKS settings. Supabase production must use JWKS. |
+
+After configuration succeeds, `ATLAS_CONNECTION_FAILED` is logged at the `database` stage and returns `STARTUP_FAILED`, not a configuration error. Check the Atlas application user, URI encoding, Network Access rules, database availability, and Vercel egress access. The underlying driver error is deliberately not logged because it can contain private hosts or connection details.
+
 ## Three-minute story after implementation
 
 0:00–0:20: Aster Rocketry's knowledge should survive graduation. 0:20–0:50: record a session and attendance. 0:50–1:25: Athena drafts a firmware contribution from fictional notes. 1:25–1:45: another officer approves it; Atlas history and rankings update. 1:45–2:25: The Court shows the engineer's actual work and requests a consented connection. 2:25–2:50: Bow explains relevant successor experience and gaps; an officer chooses the next step. 2:50–3:00: close with knowledge passed forward.
