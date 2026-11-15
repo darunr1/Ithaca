@@ -57,7 +57,7 @@ async function renderAthena() {
 const formatCitation = citation => `<details class="athena-citation"><summary>${e(citation.filename)}${citation.page ? ` · page ${e(citation.page)}` : ''}${citation.section ? ` · ${e(citation.section)}` : ''}</summary><small>Source: ${e(citation.sourceId)}</small></details>`;
 function answerHtml(result) {
   const citations = new Map((result.citations || []).map(item => [item.sourceId, item]));
-  const claims = (result.statements || []).map((statement, index) => `<article class="athena-claim"><div class="athena-claim-heading"><span>Finding ${index + 1}</span><small>${e(statement.attribution || 'not_applicable')}</small></div><p>${e(statement.text)}</p><div class="athena-claim-evidence">${(statement.evidence || []).map(evidence => { const source = citations.get(evidence.sourceId); return `<blockquote><p>“${e(evidence.quote)}”</p><footer>${e(source?.filename || evidence.sourceId)}${source?.page ? ` · page ${e(source.page)}` : ''}${source?.section ? ` · ${e(source.section)}` : ''}</footer></blockquote>`; }).join('')}</div></article>`).join('');
+  const claims = (result.statements || []).map((statement, index) => `<article class="athena-claim"><div class="athena-claim-heading"><span>Finding ${index + 1}</span><small>${e(statement.attribution || 'not_applicable')}</small></div><p>${e(statement.text)}</p><div class="athena-claim-evidence">${(statement.evidence || []).map(evidence => { const source = citations.get(evidence.sourceId); return `<blockquote><p>“${e(evidence.quote)}”</p><footer>${e(source?.filename || evidence.sourceId)}${source?.page ? ` · page ${e(source.page)}` : ''}${source?.section ? ` · ${e(source.section)}` : ''}</footer></blockquote>`; }).join('')}<button type="button" class="athena-probe-button" data-athena-probe="${e(statement.text)}">Investigate this finding ↗</button></article>`).join('');
   const notices = `${result.insufficientEvidence ? '<div class="notice" role="status">The retrieved passages do not fully support this answer. Upload additional evidence or investigate the missing information.</div>' : ''}${result.conflictingEvidence ? '<div class="notice" role="status">Conflicting accounts were found. Review the cited passages before acting.</div>' : ''}`;
   const coverage = result.retrieval ? `<p class="athena-coverage">Retrieved ${e(result.retrieval.retrievedChunks ?? 0)} passage(s)${result.retrieval.documents === undefined ? '' : ` across ${e(result.retrieval.documents)} document(s)`} with MongoDB Atlas Vector Search.</p>` : '';
   return `${coverage}${claims || `<p class="body-copy">${e(result.answer || 'There are no supported findings yet.')}</p>`}${notices}<details class="athena-citation-list"><summary>Source references (${citations.size})</summary><div class="athena-citations">${[...citations.values()].map(formatCitation).join('') || '<p class="empty">No citations found.</p>'}</div></details>`;
@@ -100,6 +100,15 @@ function bindAthena() {
       output.textContent = `Gemini embeddings: ${data.embeddings}. Atlas index: ${data.vectorIndex}${data.vectorQueryable ? ' (ready).' : ' (not ready yet).'} ${data.note}`;
     } catch (error) { output.textContent = `Integration check failed: ${error.message}`; }
     finally { button.disabled = false; }
+  });
+  document.querySelector('.module-athena')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-athena-probe]');
+    if (!button) return;
+    const input = document.querySelector('#athena-question');
+    if (!input) return;
+    input.value = `Investigate this documented finding, checking supporting and contradicting evidence: ${button.dataset.athenaProbe}`.slice(0, 2000);
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.focus();
   });
   document.querySelectorAll('[data-athena-analysis]').forEach(button => button.addEventListener('click', async () => {
     const status = document.querySelector('#athena-analysis-status');
