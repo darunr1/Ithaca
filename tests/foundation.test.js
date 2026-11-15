@@ -12,7 +12,17 @@ import { createGeminiService } from '../ai-service/gemini.js';
 import { extractNotes } from '../backend/middleware/uploads.js';
 import { fixtures } from '../demo-data/fixtures.js';
 import { indexes, setupCollections } from '../database/definitions.js';
+import { readFileSync } from 'node:fs';
 const config = readConfig({ DATA_MODE: 'demo', AI_MODE: 'mock' });
+
+test('Vercel deployment routes API functions and frontend assets', () => {
+  const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url)));
+  assert.deepEqual(vercel.rewrites.slice(0, 2), [
+    { source: '/api/(.*)', destination: '/api/index.js' },
+    { source: '/', destination: '/frontend/index.html' }
+  ]);
+  assert.equal(vercel.rewrites[2].destination, '/frontend/$1');
+});
 
 test('credentialless mode is explicit; live modes cannot silently fall back', () => {
   assert.equal(readConfig({}).DATA_MODE, 'demo');
