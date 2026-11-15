@@ -16,6 +16,16 @@ export const definitions = {
   resumeFiles: schema(['authProviderUserId', 'filename', 'contentType', 'size', 'uploadedAt', 'content'], {
     authProviderUserId: string, filename: string, contentType: string, size: { bsonType: ['int', 'long'] }, uploadedAt: string, content: { bsonType: 'binData' }
   }),
+  clubInvitations: schema(['clubId', 'universityId', 'invitedMemberId', 'invitedBy', 'status', 'createdAt'], {
+    clubId: string, clubName: string, universityId: string, invitedMemberId: string,
+    invitedBy: string, status: { enum: ['pending', 'accepted', 'declined'] },
+    createdAt: string, respondedAt: string
+  }),
+  successionRoles: schema(['clubId', 'title', 'description', 'skills', 'nominations', 'createdBy', 'createdAt'], {
+    clubId: string, title: string, description: string, skills: strings,
+    nominations: { bsonType: 'array', items: { bsonType: 'object' } },
+    createdBy: string, createdAt: string
+  }),
   sessions: schema(['clubId', 'date', 'week', 'title', 'takenBy'], { ...reference, title: string, takenBy: string }),
   attendance: schema(['clubId', 'memberId', 'sessionId', 'date', 'week', 'points', 'recordedBy'], { ...reference, points: { enum: [10] }, recordedBy: string }),
   contributions: { $and: [schema(['clubId', 'memberId', 'date', 'week', 'description', 'skills', 'level', 'points', 'status', 'source', 'approvedBy'], {
@@ -34,6 +44,8 @@ export const indexes = {
   clubs: [{ key: { universityId: 1 } }], members: [{ key: { clubIds: 1 } }, { key: { visibleToCompanies: 1 } }, { key: { supabaseUserId: 1 }, unique: true, sparse: true }],
   userProfiles: [{ key: { authProvider: 1, authProviderUserId: 1 }, unique: true }, { key: { internalMemberId: 1 }, unique: true }, { key: { email: 1 } }],
   resumeFiles: [{ key: { authProviderUserId: 1 }, unique: true }],
+  clubInvitations: [{ key: { invitedMemberId: 1, status: 1 } }, { key: { clubId: 1, invitedMemberId: 1, status: 1 } }],
+  successionRoles: [{ key: { clubId: 1, createdAt: -1 } }],
   sessions: [{ key: { clubId: 1, date: -1 } }],
   attendance: [{ key: { sessionId: 1, memberId: 1 }, unique: true }, { key: { clubId: 1, week: 1 } }],
   contributions: [{ key: { clubId: 1, date: -1, status: 1 } }, { key: { clubId: 1, week: 1 } }, { key: { universityId: 1, week: 1 } }, { key: { memberId: 1, date: -1 } }],
