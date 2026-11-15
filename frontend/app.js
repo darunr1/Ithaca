@@ -40,7 +40,7 @@ async function render(argument) {
 async function setupIdentity() {
   const select = document.querySelector('#identity');
   const identity = await api('/auth/me');
-  if (identity.meta.authentication === 'clerk') {
+  if (identity.meta.authentication === 'supabase') {
     const profile = identity.data.profile;
     document.querySelector('#identity-avatar').textContent = initials(profile.name);
     document.querySelector('#identity-name').textContent = profile.name;
