@@ -1,6 +1,7 @@
 import { api, currentMemberId } from '../shared/api.js';
 import { e, heading, memberLink } from '../shared/ui.js';
-const state = { range: 'all', clubId: '', flash: null, openRequests: false };
+import { sampleLedgerPage } from '../shared/sample-pages.js';
+const state = { range: 'all', clubId: '', flash: null, openRequests: false, preview: null, sampleClubId: 'sample-ithaca' };
 const RANGES = { all: 'All time', week: 'This week' };
 const LEVELS = { low: 'Low · 30', medium: 'Medium · 60', high: 'High · 90' };
 const LEVEL_POINTS = { low: 30, medium: 60, high: 90 };
@@ -68,9 +69,14 @@ export async function renderKleos(argument) {
     roster = { members: members.map(m => ({ ...m, contributions: 0, sessions: 0,
       officer: club.officerIds.includes(m.id), points: rankings.rows.find(row => row.memberId === m.id)?.points || 0 })) };
   }
+  // The preview is local and read-only: no sample entries are sent to Atlas.
+  const realActivity = rankings.rows.length || roster.members.some(member => member.points > 0 || member.contributions > 0 || member.sessions > 0);
+  const sampleMode = state.preview === true || (state.preview === null && Boolean(auth.profile) && !realActivity);
+  if (sampleMode) return sampleLedgerPage(state.sampleClubId);
   const memberRows = roster.members.map((m, i) => `<tr><td><span class="module-rank">#${i + 1}</span></td><td><a href="#member/${encodeURIComponent(m.id)}">${e(m.name)}</a>${m.officer ? ' <span class="module-chip">Officer</span>' : ''}<small class="module-table-sub">${e(m.major || 'Major not specified')}</small></td><td>${m.contributions}</td><td>${m.sessions}</td><td><strong>${m.points}</strong></td></tr>`).join('') || '<tr><td colspan="5" class="module-empty">No members have joined yet.</td></tr>';
   const html = `<div class="module-page module-ledger">
     <header class="module-hero"><div><span class="module-kicker">KLEOS LEDGER / RECOGNITION THROUGH DEEDS</span><h1>Proof over promises.</h1><p>Document engineering work, celebrate the contributors, and record officer-reviewed evidence. Every point traces back to activity in your club.</p></div><div class="module-hero-symbol" aria-hidden="true">▤</div></header>
+    ${auth.profile ? '<div class="module-live-preview-control"><span>Your actual club records are shown below.</span><button type="button" data-sample-show-demo>Explore populated demo</button></div>' : ''}
     <div class="module-context"><label for="kleos-club">Active organization</label><select id="kleos-club">${clubs.map(c => `<option value="${e(c.id)}" ${c.id === club.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select><span>${officer ? 'Officer review tools available' : 'Member contribution requests available'}</span></div>
     <div class="module-heading"><div><span>CLUB RECORDS / ${e(club.name.toUpperCase())}</span><h2>Member roster and statistics</h2></div><p>${roster.members.length} members · ${roster.members.reduce((sum,m)=>sum+m.contributions,0)} reviewed contributions</p></div>
     <section class="module-panel"><div class="module-panel-head"><div><span>RECORDED ACTIVITY</span><h2>All club members</h2></div><span class="module-chip">Real Atlas data</span></div>
@@ -162,6 +168,9 @@ function bindContributionRejects(root, rerender) {
   });
 }
 export function bindKleos(root, rerender) {
+  root.querySelector('[data-sample-show-live]')?.addEventListener('click', () => rerender({ preview: false }));
+  root.querySelector('[data-sample-show-demo]')?.addEventListener('click', () => rerender({ preview: true }));
+  root.querySelector('#sample-club-picker')?.addEventListener('change', event => rerender({ preview: true, sampleClubId: event.target.value }));
   root.querySelector('#ranking-range')?.addEventListener('change', event => rerender({ range: event.target.value }));
   root.querySelector('#kleos-club')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
   bindReviews(root, rerender);
