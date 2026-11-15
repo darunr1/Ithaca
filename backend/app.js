@@ -6,13 +6,16 @@ import { createWorkspace } from './services/workspace.js';
 import { readRoutes } from './routes/read.js';
 import { plannedRoutes } from './routes/planned.js';
 import { atheneRoutes } from './athene/routes.js';
+import { ledgerRoutes } from './routes/ledger.js';
+import { createCollegeDirectory } from './services/colleges.js';
+import { createCatalog } from './services/catalog.js';
 export function createApp({ config, db = null, athene = {} }) {
   if (config.DATA_MODE === 'atlas' && !db) throw new Error('Atlas mode requires a connected database.');
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
   const repository = createRepository(db);
-  const workspace = createWorkspace(repository);
+  const workspace = createWorkspace(repository, createCollegeDirectory(), createCatalog());
   const send = (res, data) => res.json({ data, meta: { mode: config.DATA_MODE, fictional: config.DATA_MODE === 'demo', foundation: true } });
   app.get('/api/health', async (req, res, next) => {
     try {
@@ -20,14 +23,21 @@ export function createApp({ config, db = null, athene = {} }) {
       send(res, { status: 'ok', database: db ? 'connected' : 'disabled', ai: config.AI_MODE, authentication: 'not-implemented' });
     } catch { next(Object.assign(new Error('Database unavailable; no fallback was used.'), { status: 503, code: 'DATABASE_UNAVAILABLE' })); }
   });
+  app.post('/api/athena-dev-session', (req, res, next) => {
+    const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+    if (!config.ATHENE_ENABLED || !config.ATHENE_DEV_TOKEN || config.NODE_ENV === 'production' || !local) return next(Object.assign(new Error('Development session is unavailable.'), { status: 404, code: 'NOT_FOUND' }));
+    res.setHeader('Set-Cookie', `athena_dev_session=${encodeURIComponent(config.ATHENE_DEV_TOKEN)}; HttpOnly; SameSite=Lax; Path=/api/projects`);
+    res.json({ data: { memberId: config.ATHENE_DEV_MEMBER_ID }, meta: { feature: 'athena', developmentOnly: true } });
+  });
   app.use('/api', readRoutes({ repository, workspace, send, config }));
   app.use('/api/projects/:projectId/athene', atheneRoutes({ db, config, ...athene }));
+  app.use('/api', ledgerRoutes({ workspace, send }));
   app.use('/api', plannedRoutes());
   app.use('/api', (req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API route not found.' } }));
   app.use(express.static(fileURLToPath(new URL('../frontend', import.meta.url))));
   app.use((error, req, res, next) => {
     const status = error instanceof ZodError ? 400 : error.status || 500;
-    res.status(status).json({ error: { code: error instanceof ZodError ? 'VALIDATION_ERROR' : error.code || (status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR'), message: status >= 500 && status !== 503 ? 'Request failed. No demo fallback was used.' : error.message } });
+    res.status(status).json({ error: { code: error instanceof ZodError ? 'VALIDATION_ERROR' : error.code || (status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR'), message: status >= 500 && status !== 503 ? 'Request failed. No demo fallback was used.' : error instanceof ZodError ? error.issues.map(i => `${i.path.join('.') || 'request'}: ${i.message}`).join('; ') : error.message } });
   });
   return app;
 }

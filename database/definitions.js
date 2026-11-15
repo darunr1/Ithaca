@@ -4,7 +4,7 @@ const boolean = { bsonType: 'bool' };
 const schema = (required, properties) => ({ $jsonSchema: { bsonType: 'object', required: ['id', ...required], properties: { id: string, ...properties } } });
 const reference = { clubId: string, memberId: string, sessionId: string, date: { bsonType: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, week: string };
 export const definitions = {
-  universities: schema(['name', 'timezone', 'semesterStart'], { name: string, timezone: string, semesterStart: string }),
+  universities: schema(['name', 'timezone', 'semesterStart'], { name: string, state: string, timezone: string, semesterStart: string }),
   clubs: schema(['name', 'universityId', 'officerIds'], { name: string, universityId: string, officerIds: strings }),
   members: schema(['name', 'universityId', 'clubIds', 'visibleToCompanies', 'openToNewClubs'], { name: string, universityId: string, clubIds: strings, visibleToCompanies: boolean, openToNewClubs: boolean, skills: strings }),
   sessions: schema(['clubId', 'date', 'week', 'title', 'takenBy'], { ...reference, title: string, takenBy: string }),

@@ -323,3 +323,20 @@ test('HTTP upload/status/RAG/contribution/reprocess use real routing, auth and v
   const tooLarge = new FormData(); tooLarge.append('files', new Blob([Buffer.alloc(5 * 1024 * 1024 + 1)], { type: 'application/pdf' }), 'large.pdf');
   assert.equal((await fetch(`${root}/documents`, { method: 'POST', headers, body: tooLarge })).status, 413);
 });
+
+test('Athena upload route is mounted before the generic 404 handler and receives multipart uploads', async t => {
+  const { service } = testService();
+  const localConfig = { ...config, ATHENE_ENABLED: true, ATHENE_DEV_TOKEN: 't'.repeat(32), ATHENE_DEV_MEMBER_ID: 'officer' };
+  const base = await listen(t, createApp({ config: localConfig, athene: { service } }));
+  const route = `${base}/api/projects/club-a/athene/documents`;
+  const unauthenticated = await fetch(route);
+  assert.notEqual(unauthenticated.status, 404);
+  assert.equal(unauthenticated.status, 401);
+  const form = new FormData(); form.append('files', new Blob([sample[0].buffer], { type: sample[0].mimetype }), sample[0].originalname);
+  const uploaded = await fetch(route, { method: 'POST', headers: { Authorization: `Bearer ${localConfig.ATHENE_DEV_TOKEN}` }, body: form });
+  assert.notEqual(uploaded.status, 404);
+  assert.equal(uploaded.status, 200);
+  const payload = await uploaded.json();
+  assert.equal(payload.data.documents.length, 1);
+  assert.equal((await fetch(`${base}/api/projects/club-a/athene/documents`, { headers: { Authorization: `Bearer ${localConfig.ATHENE_DEV_TOKEN}` } })).status, 200);
+});

@@ -13,7 +13,10 @@ const examples = {
   'GET /api/clubs/club-rocketry/drafts': wrap(await repo.list('drafts', { clubId: 'club-rocketry' })),
   'GET /api/members/member-leo': wrap(await workspace.profile('member-leo')),
   'GET /api/clubs/club-rocketry/rankings?range=all': wrap(await workspace.rankings('club-rocketry', 'all', '2026-11-14')),
-  'GET /api/recruiter/profiles': wrap(await workspace.discovery())
+  'GET /api/recruiter/profiles': wrap(await workspace.discovery()),
+  'GET /api/clubs/club-rocketry/semesters (X-Demo-Member: member-iris)': wrap(await workspace.semesters('club-rocketry', await workspace.actor('member-iris'))),
+  'GET /api/universities': wrap(await workspace.universityTotals()),
+  'GET /api/universities/uni-aster/leaderboard': wrap(await workspace.universityLeaderboard('uni-aster'))
 };
 await writeFile(new URL('./api-examples.json', import.meta.url), JSON.stringify(examples, null, 2) + '\n');
 console.log('Updated read-response examples. Planned write examples remain in docs/API.md.');

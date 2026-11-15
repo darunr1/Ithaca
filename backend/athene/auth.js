@@ -7,7 +7,8 @@ import { fail } from './errors.js';
 export function createAuthenticator(config) {
   const keys = config.AUTH_JWKS_URL ? createRemoteJWKSet(new URL(config.AUTH_JWKS_URL), { timeoutDuration: 5000 }) : null;
   return async req => {
-    const match = /^Bearer ([^\s]+)$/.exec(req.headers.authorization || '');
+    const cookies = Object.fromEntries((req.headers.cookie || '').split(';').map(part => part.trim().split('=').map(decodeURIComponent)).filter(([key, value]) => key && value));
+    const match = /^Bearer ([^\s]+)$/.exec(req.headers.authorization || '') || (cookies.athena_dev_session ? ['', cookies.athena_dev_session] : null);
     if (!match) throw fail(401, 'UNAUTHENTICATED', 'A bearer token is required.');
     if (config.ATHENE_DEV_TOKEN) {
       const actual = Buffer.from(match[1]); const expected = Buffer.from(config.ATHENE_DEV_TOKEN);
