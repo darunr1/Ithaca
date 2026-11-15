@@ -16,6 +16,16 @@ const onboarding = z.object({
   graduationYear: z.coerce.number().int().min(new Date().getUTCFullYear()).max(new Date().getUTCFullYear() + 12)
 }).strict();
 
+// Older accounts may say "onboarded" even though the academic profile was never completed.
+// A checked box alone must never unlock the workspace.
+export function needsStudentOnboarding(profile) {
+  return !profile?.onboarded ||
+    typeof profile.universityName !== 'string' || profile.universityName.trim().length < 2 ||
+    typeof profile.major !== 'string' || profile.major.trim().length < 2 ||
+    !Object.hasOwn(CLASS_YEARS, profile.classification) ||
+    !Number.isInteger(profile.graduationYear);
+}
+
 const parseResume = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_RESUME_BYTES, files: 1, fields: 0 }
@@ -169,7 +179,8 @@ export function supabaseIdentity({ config, db, verify, requireOnboarding = true 
           classification: member.classification ?? profile.classification
         };
       }
-      if (requireOnboarding && !profile.onboarded) throw fail(403, 'ONBOARDING_REQUIRED', 'Complete your Ithaca profile before opening the workspace.');
+      req.onboardingRequired = needsStudentOnboarding(req.authProfile);
+      if (requireOnboarding && req.onboardingRequired) throw fail(403, 'ONBOARDING_REQUIRED', 'Complete your university, classification, major, and graduation year before opening the workspace.');
       next();
     } catch (error) {
       next(error?.status ? error : fail(503, 'DATABASE_UNAVAILABLE', 'Your authenticated profile could not be loaded because Atlas is unavailable.'));
@@ -191,7 +202,10 @@ export function authRoutes({ config, db, verify, directory }) {
     return router;
   }
   router.use(supabaseIdentity({ config, db, verify, requireOnboarding: false }));
-  router.get('/me', (req, res) => res.json({ data: { profile: req.authProfile, onboardingRequired: !req.authProfile?.onboarded }, meta: { authentication: 'supabase' } }));
+  router.get('/me', (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ data: { profile: req.authProfile, onboardingRequired: req.onboardingRequired }, meta: { authentication: 'supabase' } });
+  });
   router.get('/university-search', async (req, res) => {
     const query = String(req.query.q || '').trim().slice(0, 80);
     if (query.length < 2) return res.json({ data: { universities: [] } });
@@ -238,35 +252,39 @@ export function authRoutes({ config, db, verify, directory }) {
   });
 
   router.post('/onboarding', async (req, res) => {
-    if (req.authProfile.onboarded) return res.json({ data: { profile: req.authProfile } });
+    // Reusable for first login, legacy incomplete accounts, and owner-initiated edits.
     const input = onboarding.parse(req.body);
     const registered = await db.collection('universities').findOne({ name: input.universityName }, { projection: { _id: 0, id: 1, name: 1 } });
     const match = directory.search(input.universityName, { limit: 10 }).find(item => normalize(item.name) === normalize(input.universityName));
     const universityName = registered?.name || match?.name || input.universityName;
     const universityId = registered?.id || match?.id || `self-${createHash('sha256').update(normalize(universityName)).digest('hex').slice(0, 24)}`;
+    const current = req.authProfile;
+    if (current.onboarded && current.clubIds?.length && current.universityId && current.universityId !== universityId) {
+      throw fail(409, 'UNIVERSITY_CHANGE_REQUIRES_ADMIN', 'Ask your club administrator to transfer your university while you belong to a club.');
+    }
     const now = new Date().toISOString();
-    const member = {
-      id: req.authProfile.internalMemberId,
-      supabaseUserId: req.authProfile.authProviderUserId,
-      name: req.authProfile.name,
-      email: req.authProfile.email,
-      universityId,
-      universityName,
-      classification: input.classification,
-      major: input.major,
-      graduationYear: input.graduationYear,
-      year: CLASS_YEARS[input.classification],
-      clubIds: [],
-      skills: [],
-      visibleToCompanies: false,
-      openToNewClubs: false,
-      createdAt: now,
-      updatedAt: now
+    const academic = {
+      universityId, universityName, classification: input.classification,
+      major: input.major, graduationYear: input.graduationYear
     };
-    await db.collection('members').updateOne({ id: member.id }, { $setOnInsert: member }, { upsert: true });
+    const memberId = current.internalMemberId;
+    await db.collection('members').updateOne(
+      { id: memberId },
+      { $setOnInsert: {
+        id: memberId, supabaseUserId: current.authProviderUserId,
+        name: current.name, email: current.email, ...academic,
+        year: CLASS_YEARS[input.classification], clubIds: [], skills: [],
+        visibleToCompanies: false, openToNewClubs: false,
+        createdAt: now, updatedAt: now
+      } },
+      { upsert: true }
+    );
+    // Preserve memberships and permissions on edits, while updating only academic facts.
+    await db.collection('members').updateOne({ id: memberId },
+      { $set: { ...academic, year: CLASS_YEARS[input.classification], updatedAt: now } });
     await db.collection('userProfiles').updateOne(
-      { authProvider: 'supabase', authProviderUserId: req.authProfile.authProviderUserId },
-      { $set: { universityId, universityName, classification: input.classification, major: input.major, graduationYear: input.graduationYear, onboarded: true, updatedAt: now } }
+      { authProvider: 'supabase', authProviderUserId: current.authProviderUserId },
+      { $set: { ...academic, onboarded: true, updatedAt: now } }
     );
     const profile = await db.collection('userProfiles').findOne({ authProvider: 'supabase', authProviderUserId: req.authProfile.authProviderUserId }, { projection: { _id: 0 } });
     res.json({ data: { profile } });
