@@ -1,5 +1,7 @@
 import multer from 'multer';
 import { httpError } from '../services/workspace.js';
+// pdf-parse (pdfjs-dist) is imported lazily: at load time it needs DOM polyfills from the optional native
+// @napi-rs/canvas package, which serverless bundles (Vercel) omit; a top-level import crashed every API route.
 // Prepared for Darun's draft route. No upload endpoint is enabled yet.
 export const notesUpload = multer({
   storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 3 },
