@@ -19,7 +19,8 @@ export function createApp({ config, db = null, athene = {}, authentication = {} 
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
   const repository = createRepository(db);
-  const workspace = createWorkspace(repository, createCollegeDirectory(), createCatalog());
+  const collegeDirectory = createCollegeDirectory();
+  const workspace = createWorkspace(repository, collegeDirectory, createCatalog());
   const send = (res, data) => res.json({ data, meta: { mode: config.DATA_MODE, fictional: config.DATA_MODE === 'demo', foundation: true } });
   app.get('/api/health', async (req, res, next) => {
     try {
@@ -27,7 +28,7 @@ export function createApp({ config, db = null, athene = {}, authentication = {} 
       send(res, { status: 'ok', database: db ? 'connected' : 'disabled', ai: config.AI_MODE, authentication: config.AUTH_MODE === 'supabase' ? 'supabase' : 'fictional-demo' });
     } catch { next(Object.assign(new Error('Database unavailable; no fallback was used.'), { status: 503, code: 'DATABASE_UNAVAILABLE' })); }
   });
-  app.use('/api/auth', authRoutes({ config, db, verify: authentication.verify }));
+  app.use('/api/auth', authRoutes({ config, db, verify: authentication.verify, directory: collegeDirectory }));
   app.post('/api/athena-dev-session', (req, res, next) => {
     const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
     if (!config.ATHENE_ENABLED || !config.ATHENE_DEV_TOKEN || config.NODE_ENV === 'production' || !local) return next(Object.assign(new Error('Development session is unavailable.'), { status: 404, code: 'NOT_FOUND' }));
