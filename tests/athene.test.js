@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 import { zipSync, strToU8 } from 'fflate';
 import { readConfig } from '../backend/config.js';
@@ -9,7 +10,7 @@ import { connectDatabase } from '../database/connection.js';
 import { extractFile, extractInWorker, validateFile } from '../backend/athene/extraction.js';
 import { chunkSections, hash, pipelineProfile } from '../backend/athene/chunking.js';
 import { createAtheneGemini, validateVector } from '../backend/athene/gemini.js';
-import { authorizeProject, createAuthenticator } from '../backend/athene/auth.js';
+import { authorizeProject, createAuthenticator, createSessionCookie } from '../backend/athene/auth.js';
 import { createAtheneRepository, vectorDefinition, checkIndex, setupAthene } from '../backend/athene/repository.js';
 import { createAtheneService, groundAnswer } from '../backend/athene/service.js';
 import { sampleFiles, makeDocx, makePdf } from '../scripts/athene-sample-data.js';
@@ -180,6 +181,31 @@ test('JWT verification enforces issuer, audience, expiration and signature; clie
   await assert.rejects(authenticate(req('forged')), { status: 401 });
   await assert.rejects(authenticate({ headers: { 'x-user-id': 'officer' } }), { status: 401 });
 });
+test('signed production browser sessions authenticate without exposing secrets', async t => {
+  const { service } = testService();
+  const accessCode = 'hackathon-access-code-with-enough-entropy';
+  const sessionConfig = {
+    ...config, ATHENE_ENABLED: true, NODE_ENV: 'production', DATA_MODE: 'atlas', AI_MODE: 'live',
+    AUTH_SESSION_SECRET: 's'.repeat(48), AUTH_ACCESS_CODE_SHA256: createHash('sha256').update(accessCode).digest('hex'), AUTH_SESSION_MEMBER_ID: 'officer'
+  };
+  const base = await listen(t, createApp({ config: sessionConfig, db: accessDb(), athene: { service } }));
+  assert.equal((await (await fetch(`${base}/api/athena-session`)).json()).data.authenticated, false);
+  const login = code => fetch(`${base}/api/athena-session`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify({ accessCode: code }) });
+  assert.equal((await login('incorrect-but-long-enough')).status, 401);
+  assert.equal((await fetch(`${base}/api/athena-session`, { method: 'POST', headers: { Origin: 'https://attacker.example', 'Content-Type': 'application/json' }, body: JSON.stringify({ accessCode }) })).status, 403);
+  const signedIn = await login(accessCode);
+  assert.equal(signedIn.status, 200);
+  const setCookie = signedIn.headers.get('set-cookie');
+  assert.match(setCookie, /HttpOnly/); assert.match(setCookie, /Secure/); assert.match(setCookie, /SameSite=Strict/);
+  const cookie = setCookie.split(';')[0];
+  assert.equal((await (await fetch(`${base}/api/athena-session`, { headers: { Cookie: cookie } })).json()).data.memberId, 'officer');
+  assert.equal((await fetch(`${base}/api/projects/club-a/athene/documents`, { headers: { Cookie: cookie } })).status, 200);
+  assert.equal((await fetch(`${base}/api/projects/club-a/athene/documents`, { headers: { Cookie: cookie.replace(/.$/, 'x') } })).status, 401);
+  assert.equal((await fetch(`${base}/api/projects/club-a/athene/query`, { method: 'POST', headers: { Cookie: cookie, Origin: 'https://attacker.example', 'Content-Type': 'application/json' }, body: JSON.stringify({ question: 'Firmware?' }) })).status, 403);
+  assert.equal((await fetch(`${base}/api/athena-session`, { method: 'DELETE', headers: { Cookie: cookie, Origin: base } })).status, 204);
+  const expired = createSessionCookie(sessionConfig, Date.now() - 9 * 60 * 60 * 1000);
+  await assert.rejects(createAuthenticator(sessionConfig)({ headers: { cookie: `athena_session=${expired}` }, socket: {} }), { status: 401 });
+});
 test('Atlas retrieval validates ready index and applies prefilter, active generation join, projection and dimensions', async () => {
   let pipeline;
   const db = { collection() { return { listSearchIndexes() { return { async toArray() { return [goodIndex]; } }; }, aggregate(value) { pipeline = value; return { async toArray() { return [source]; } }; } }; } };
@@ -296,6 +322,9 @@ test('config fails closed; local bearer is restricted to loopback and fictional 
   const live = { DATA_MODE: 'atlas', AI_MODE: 'live', MONGODB_URI: 'mongodb://localhost', GEMINI_API_KEY: 'test-only', ATHENE_ENABLED: 'true', ATHENE_DEV_TOKEN: 't'.repeat(32) };
   assert.equal(readConfig(live).ATHENE_ENABLED, true);
   for (const values of [{ HOST: '0.0.0.0' }, { NODE_ENV: 'production' }, { MONGODB_DB: 'ithaca' }, { ATHENE_DEV_TOKEN: 'short' }]) assert.throws(() => readConfig({ ...live, ...values }), /requires/);
+  const production = { DATA_MODE: 'atlas', AI_MODE: 'live', MONGODB_URI: 'mongodb://atlas.example', GEMINI_API_KEY: 'test-only', ATHENE_ENABLED: 'true', NODE_ENV: 'production', AUTH_SESSION_SECRET: 's'.repeat(48), AUTH_ACCESS_CODE_SHA256: 'a'.repeat(64), AUTH_SESSION_MEMBER_ID: 'officer' };
+  assert.equal(readConfig(production).ATHENE_ENABLED, true);
+  for (const missing of ['AUTH_SESSION_SECRET', 'AUTH_ACCESS_CODE_SHA256', 'AUTH_SESSION_MEMBER_ID']) assert.throws(() => readConfig({ ...production, [missing]: '' }), /requires/);
 });
 test('HTTP upload/status/RAG/contribution/reprocess use real routing, auth and validation', async t => {
   const { service } = testService();

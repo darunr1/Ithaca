@@ -6,11 +6,23 @@ const projectPath = '/projects/club-rocketry/athene';
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 async function renderAthena() {
+  let session;
+  try {
+    const identity = await api('/auth/me');
+    session = identity.meta.authentication === 'clerk' ? { data: { authenticated: true }, meta: { provider: 'clerk' } } : await api('/athena-session');
+  }
+  catch (error) { return `${heading('ATHENA / YOUR GUIDE', 'Athena is unavailable.', 'The production authentication service could not be reached.')}<div class="notice" role="alert">${e(error.message)}</div>`; }
+  if (!session.data.authenticated) {
+    const login = session.meta.provider === 'access-code'
+      ? `<form id="athena-login-form" class="panel auth-panel"><label for="athena-access-code">Athena access code</label><input id="athena-access-code" name="accessCode" type="password" minlength="16" maxlength="256" autocomplete="current-password" required><button type="submit">Sign in securely</button><p id="athena-login-status" role="status" class="body-copy"></p></form>`
+      : '<div class="notice" role="alert">Athena requires a production identity-provider bearer session. Ask an administrator for access.</div>';
+    return `${heading('ATHENA / YOUR GUIDE', 'Ask Athena after signing in.', 'Upload documents and query the archive as an authorized club member or officer.')}${login}`;
+  }
   let documents = [];
   try { documents = (await api(`${projectPath}/documents`)).data.documents || []; } catch { /* The page remains usable for setup/auth errors. */ }
   const rows = documents.map(doc => `<li class="athena-document"><div><strong>${e(doc.filename)}</strong><small>${e(doc.status)}${doc.error ? ` · ${e(doc.error.message)}` : ''}</small></div>${doc.retryable ? `<button type="button" class="secondary" data-athena-retry="${e(doc.id)}">Retry</button>` : ''}</li>`).join('') || '<li class="empty">No project documents uploaded yet.</li>';
-  return `${heading('ATHENA / YOUR GUIDE', 'Ask questions about the project record.', 'Source-grounded answers from the documents your club has uploaded.')}${notice('Athena answers from authorized project documents and cites the source material. Contribution proposals and approvals belong in the Kleos Ledger.')}
-    <div class="columns"><section class="panel"><p class="eyebrow">01 / PROJECT SOURCES</p><h2>Upload project documents</h2><form id="athena-upload-form"><div class="upload-placeholder" id="athena-dropzone" tabindex="0" role="button" aria-label="Choose project documents"><span>↥</span><h3>Choose or drop files here</h3><p>PDF, DOCX, and supported CAD metadata · up to 5 MB each · maximum 5 files</p><label class="button" for="athena-files">Choose files</label><input id="athena-files" name="files" type="file" accept=".pdf,.docx,.step,.stp,.dxf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple required></div><button type="submit" id="athena-upload-submit">Upload documents</button><p id="athena-upload-status" class="body-copy" role="status"></p></form><ul class="athena-documents" id="athena-documents">${rows}</ul></section><section class="panel"><p class="eyebrow">02 / GROUNDED QUESTIONS</p><h2>Ask Athena</h2><form id="athena-query-form" class="search"><label class="sr-only" for="athena-question">Question</label><input id="athena-question" name="question" placeholder="Who worked on the battery firmware?" required maxlength="2000"><button type="submit">Ask</button></form><div id="athena-answer" aria-live="polite"><p class="empty">Your grounded answer will appear here with source citations.</p></div><hr><p class="eyebrow">CONTRIBUTION EVIDENCE</p><form id="athena-contribution-form" class="search"><label class="sr-only" for="athena-person">Person</label><input id="athena-person" name="person" placeholder="Person, e.g. Darun" maxlength="120" required><input name="question" placeholder="What did they contribute?" maxlength="2000"><button type="submit">Analyze</button></form><div id="athena-contribution-answer" aria-live="polite"></div></section></div>`;
+  return `${heading('ATHENA / YOUR GUIDE', 'Ask questions about the project record.', 'Source-grounded answers from the documents your club has uploaded.')}${session.meta.provider === 'clerk' ? '' : '<p><button id="athena-logout" type="button" class="secondary">Sign out of Athena</button></p>'}${notice('Athena answers from authorized project documents and cites the source material. Contribution proposals and approvals belong in the Kleos Ledger.')}
+    <div class="columns"><section class="panel"><p class="eyebrow">01 / PROJECT SOURCES</p><h2>Upload project documents</h2><form id="athena-upload-form"><div class="upload-placeholder" id="athena-dropzone" tabindex="0" role="button" aria-label="Choose project documents"><span>↥</span><h3>Choose or drop files here</h3><p>PDF, DOCX, and supported CAD metadata · under 4 MiB combined · maximum 5 files</p><label class="button" for="athena-files">Choose files</label><input id="athena-files" name="files" type="file" accept=".pdf,.docx,.step,.stp,.dxf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple required></div><button type="submit" id="athena-upload-submit">Upload documents</button><p id="athena-upload-status" class="body-copy" role="status"></p></form><ul class="athena-documents" id="athena-documents">${rows}</ul></section><section class="panel"><p class="eyebrow">02 / GROUNDED QUESTIONS</p><h2>Ask Athena</h2><form id="athena-query-form" class="search"><label class="sr-only" for="athena-question">Question</label><input id="athena-question" name="question" placeholder="Who worked on the battery firmware?" required maxlength="2000"><button type="submit">Ask</button></form><div id="athena-answer" aria-live="polite"><p class="empty">Your grounded answer will appear here with source citations.</p></div><hr><p class="eyebrow">CONTRIBUTION EVIDENCE</p><form id="athena-contribution-form" class="search"><label class="sr-only" for="athena-person">Person</label><input id="athena-person" name="person" placeholder="Person, e.g. Darun" maxlength="120" required><input name="question" placeholder="What did they contribute?" maxlength="2000"><button type="submit">Analyze</button></form><div id="athena-contribution-answer" aria-live="polite"></div></section></div>`;
 }
 
 const formatCitation = citation => `<details class="athena-citation"><summary>${e(citation.filename)}${citation.page ? ` · page ${e(citation.page)}` : ''}${citation.section ? ` · ${e(citation.section)}` : ''}</summary><small>Source: ${e(citation.sourceId)}</small></details>`;
@@ -21,6 +33,18 @@ function answerHtml(result) {
 
 function bindAthena() {
   if (typeof document === 'undefined') return renderAthena();
+  document.querySelector('#athena-login-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const status = document.querySelector('#athena-login-status'); const button = event.target.querySelector('button');
+    button.disabled = true; status.textContent = 'Signing inâ€¦';
+    try { await apiJson('/athena-session', { accessCode: new FormData(event.target).get('accessCode') }); window.dispatchEvent(new Event('hashchange')); }
+    catch (error) { status.textContent = error.message; button.disabled = false; }
+  });
+  document.querySelector('#athena-logout')?.addEventListener('click', async event => {
+    event.target.disabled = true;
+    try { await fetch('/api/athena-session', { method: 'DELETE', credentials: 'same-origin', headers: { Accept: 'application/json' } }); }
+    finally { window.dispatchEvent(new Event('hashchange')); }
+  });
   const filesInput = document.querySelector('#athena-files');
   const dropzone = document.querySelector('#athena-dropzone');
   const uploadForm = document.querySelector('#athena-upload-form');

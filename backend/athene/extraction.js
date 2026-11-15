@@ -1,6 +1,5 @@
 import { extname } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
-import { PDFParse } from 'pdf-parse';
 import { unzipSync, strFromU8 } from 'fflate';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { fail } from './errors.js';
@@ -52,6 +51,10 @@ export async function extractFile(file) {
   try {
     if (extension === '.pdf') {
       if (file.buffer.subarray(0, 5).toString() !== '%PDF-') throw fail(422, 'INVALID_PDF', 'Invalid PDF signature.');
+      // pdfjs performs browser/canvas feature detection when imported. Keep that
+      // optional dependency out of the serverless cold-start path so a parser
+      // incompatibility can never take down health and unrelated API routes.
+      const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: file.buffer });
       try {
         const result = await parser.getText();

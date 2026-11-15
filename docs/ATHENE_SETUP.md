@@ -24,7 +24,7 @@ Create a server-side key in [Google AI Studio API keys](https://aistudio.google.
 Model choices were checked against official documentation on November 14, 2026:
 
 - `GEMINI_EMBEDDING_MODEL=gemini-embedding-001`: Google's [embedding documentation](https://ai.google.dev/gemini-api/docs/embeddings) still lists this text model. Use `RETRIEVAL_DOCUMENT` for chunks and `RETRIEVAL_QUERY` for questions; request 768 dimensions and normalize both for cosine similarity. The installed `@google/genai` 1.52.0 supports `models.embedContent`, `taskType`, `outputDimensionality`, batching, and request cancellation. Requests are grouped into at most 16 texts.
-- `ATHENE_GEMINI_MODEL=gemini-3.5-flash-lite`: a configurable [stable model with structured output support](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite). Athene uses the same SDK and API key as the existing AI module. This separate model setting avoids changing teammate generation workflows. The foundation's existing `GEMINI_MODEL=gemini-2.5-flash` is left intact; Google's [2.5 Flash documentation](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash) restricts API access to existing users ahead of its announced transition. Do not rely on that old default for a new key.
+- `ATHENE_GEMINI_MODEL=gemini-3.5-flash-lite`: a configurable [stable model with structured output support](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite). Athene uses the same SDK and API key as the existing AI module. This separate model setting avoids changing teammate RAG workflows. The foundation defaults to the current GA `GEMINI_MODEL=gemini-3.8-flash`; the retired `gemini-2.5-flash` endpoint is not a valid deployment default.
 
 Documentation compatibility is **not** proof that your key can access either model. The live integration test below is the actual account-specific verification. Switching to a different embedding family may require adapting task settings; changing embedding model, dimensions or chunk settings requires reprocessing documents. Changing dimensions also requires updating the Atlas index.
 
@@ -73,7 +73,18 @@ NODE_ENV=development
 
 This token is accepted only from a loopback socket, with a loopback HOST, non-production NODE_ENV, and database name ending `_demo`. It represents the existing seeded officer `member-iris`; it does not create a user or grant access to another club. Do not expose this configuration through a reverse proxy or public tunnel. The seeded project's documents use fictional versions of team names as text; that does not create members or assert real achievements.
 
-**Shared production authentication:** leave `ATHENE_DEV_TOKEN` empty and configure:
+**Shared production authentication:** leave `ATHENE_DEV_TOKEN` empty. For a controlled hackathon browser demo, configure a high-entropy access-code hash and signed session:
+
+```dotenv
+AUTH_SESSION_SECRET=<32+ random characters, separate from the access code>
+AUTH_ACCESS_CODE_SHA256=<SHA-256 hex digest of the high-entropy access code>
+AUTH_SESSION_MEMBER_ID=<existing officer members.id>
+NODE_ENV=production
+```
+
+The plaintext access code is entered in the Athena page and is never stored in Vercel or browser storage. Successful exchange creates an eight-hour `Secure`, `HttpOnly`, `SameSite=Strict` cookie. Atlas membership and project/officer authorization still run on every request. This is intended for a small trusted demo audience; use an identity provider for public multi-user deployment.
+
+For an external identity provider, configure instead:
 
 ```dotenv
 AUTH_JWKS_URL=https://<identity-provider>/.well-known/jwks.json

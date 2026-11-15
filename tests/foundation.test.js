@@ -7,8 +7,8 @@ import { createApp } from '../backend/app.js';
 import { createRepository } from '../backend/repositories/records.js';
 import { contributionPoints, parseTerm, semesterOf, termsThrough, validateReviewer, weekStart } from '../backend/services/scoring.js';
 import { universityContributorsPipeline, universityTotalsPipeline } from '../database/aggregations.js';
-import { validateExtraction, validateFit } from '../ai-service/schemas.js';
-import { createGeminiService } from '../ai-service/gemini.js';
+import { extractionJsonSchema, validateExtraction, validateFit } from '../ai-service/schemas.js';
+import { createGeminiService, geminiJsonSchema } from '../ai-service/gemini.js';
 import { extractNotes } from '../backend/middleware/uploads.js';
 import { fixtures } from '../demo-data/fixtures.js';
 import { indexes, setupCollections } from '../database/definitions.js';
@@ -19,9 +19,14 @@ test('Vercel deployment routes API functions and frontend assets', () => {
   const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url)));
   assert.deepEqual(vercel.rewrites.slice(0, 2), [
     { source: '/api/(.*)', destination: '/api/index.js' },
-    { source: '/', destination: '/frontend/index.html' }
+    { source: '/', destination: '/index.html' }
   ]);
-  assert.equal(vercel.rewrites[2].destination, '/frontend/$1');
+  assert.equal(vercel.outputDirectory, 'frontend');
+  assert.deepEqual(vercel.rewrites.slice(2), [
+    { source: '/app', destination: '/app.html' },
+    { source: '/sign-in', destination: '/sign-in.html' },
+    { source: '/sign-up', destination: '/sign-up.html' }
+  ]);
 });
 
 test('credentialless mode is explicit; live modes cannot silently fall back', () => {
@@ -29,6 +34,14 @@ test('credentialless mode is explicit; live modes cannot silently fall back', ()
   assert.throws(() => readConfig({ DATA_MODE: 'atlas' }), /MONGODB_URI/);
   assert.throws(() => readConfig({ AI_MODE: 'live' }), /GEMINI_API_KEY/);
   assert.throws(() => createApp({ config: { ...config, DATA_MODE: 'atlas' } }), /connected database/);
+});
+test('Gemini receives its supported schema subset while Zod retains strict validation', () => {
+  const schema = geminiJsonSchema(extractionJsonSchema);
+  assert.equal(schema.$schema, undefined);
+  assert.equal(schema.additionalProperties, undefined);
+  assert.equal(schema.properties.drafts.maxItems, undefined);
+  assert.deepEqual(schema.properties.drafts.items.properties.memberId.type, ['string', 'null']);
+  assert.deepEqual(schema.properties.drafts.items.properties.suggestedLevel.enum, ['low', 'medium', 'high']);
 });
 test('scoring and reviewer boundaries', () => {
   assert.deepEqual(['low', 'medium', 'high'].map(l => contributionPoints(l)), [30, 60, 90]);
@@ -90,8 +103,10 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
   const health = await get('/api/health');
   assert.equal(health.meta.mode, 'demo'); assert.equal(health.data.status, 'ok');
   const html = await (await fetch(base)).text();
-  for (const label of ['Ithaca Home', 'Athena', 'Kleos Ledger', 'The Court', 'Bow']) assert.ok(html.includes(label));
-  for (const path of ['/app.js', '/styles.css', '/shared/api.js', '/core/home.js', '/recruiting/court.js']) assert.equal((await fetch(base + path)).status, 200);
+  assert.ok(html.includes('Engineering legacies deserve to be remembered.'));
+  const workspaceHtml = await (await fetch(base + '/app.html')).text();
+  for (const label of ['Ithaca Home', 'Athena', 'Kleos Ledger', 'The Court', 'Bow']) assert.ok(workspaceHtml.includes(label));
+  for (const path of ['/landing.css', '/workspace.js', '/clerk.js', '/app.js', '/styles.css', '/shared/api.js', '/core/home.js', '/recruiting/court.js']) assert.equal((await fetch(base + path)).status, 200);
   const all = await get('/api/clubs/club-rocketry/rankings?range=all');
   assert.deepEqual(all.data.rows.map(r => r.points), [280, 250, 130]);
   const week = await get('/api/clubs/club-rocketry/rankings?range=week');
@@ -390,11 +405,11 @@ test('Atlas failures propagate instead of returning fixtures', async t => {
   const result = await fetch(base + '/api/clubs');
   assert.equal(result.status, 500); assert.ok(!('data' in await result.json()));
 });
-test('setup creates all 11 collections and attendance duplicate guard', async () => {
+test('setup creates all 12 collections and attendance duplicate guard', async () => {
   const created = [], installed = [];
   const db = { listCollections: () => ({ toArray: async () => [] }), createCollection: async (name, options) => created.push({ name, options }), collection: name => ({ createIndex: async (key, options) => installed.push({ name, key, options }) }) };
   await setupCollections(db);
-  assert.equal(created.length, 11);
+  assert.equal(created.length, 12);
   assert.ok(created.every(c => c.options.validationAction === 'error'));
   assert.ok(installed.some(i => i.name === 'attendance' && i.key.sessionId && i.key.memberId && i.options.unique));
 });

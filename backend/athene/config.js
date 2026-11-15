@@ -13,6 +13,9 @@ export const atheneConfig = z.object({
   AUTH_JWKS_URL: z.string().default(''),
   AUTH_ISSUER: z.string().default(''),
   AUTH_AUDIENCE: z.string().default(''),
+  AUTH_SESSION_SECRET: z.string().default(''),
+  AUTH_ACCESS_CODE_SHA256: z.string().default(''),
+  AUTH_SESSION_MEMBER_ID: z.string().default(''),
   ATHENE_DEV_TOKEN: z.string().default(''),
   ATHENE_DEV_MEMBER_ID: z.string().default('member-iris'),
   NODE_ENV: z.string().default('development')
@@ -26,7 +29,11 @@ export function validateAtheneConfig(config) {
     if (config.ATHENE_DEV_TOKEN.length < 32 || config.NODE_ENV === 'production' || !['127.0.0.1', '::1', 'localhost'].includes(config.HOST) || !config.MONGODB_DB.endsWith('_demo')) {
       throw new Error('ATHENE_DEV_TOKEN requires 32+ characters, loopback HOST, a _demo database, and non-production NODE_ENV.');
     }
-  } else if (!config.AUTH_JWKS_URL || !config.AUTH_ISSUER || !config.AUTH_AUDIENCE || new URL(config.AUTH_JWKS_URL).protocol !== 'https:') {
-    throw new Error('Athene requires HTTPS AUTH_JWKS_URL, AUTH_ISSUER and AUTH_AUDIENCE, or a restricted local development token.');
+  } else {
+    let jwks = false;
+    try { jwks = Boolean(config.AUTH_JWKS_URL && config.AUTH_ISSUER && config.AUTH_AUDIENCE && new URL(config.AUTH_JWKS_URL).protocol === 'https:'); } catch { /* Invalid provider URLs fail closed. */ }
+    const session = config.AUTH_SESSION_SECRET.length >= 32 && /^[a-f0-9]{64}$/i.test(config.AUTH_ACCESS_CODE_SHA256) && /^[a-zA-Z0-9_-]{1,128}$/.test(config.AUTH_SESSION_MEMBER_ID);
+    const clerk = config.AUTH_MODE === 'clerk' && config.CLERK_PUBLISHABLE_KEY?.startsWith('pk_') && config.CLERK_SECRET_KEY?.startsWith('sk_');
+    if (!jwks && !session && !clerk) throw new Error('Athene requires Clerk, HTTPS JWKS authentication, or a secure signed browser session.');
   }
 }

@@ -1,8 +1,18 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
+  "outputDirectory": "frontend",
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 300,
+      "includeFiles": "**/*.csv"
+    }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/", "destination": "/frontend/index.html" },
-    { "source": "/(.*)", "destination": "/frontend/$1" }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/sign-in", "destination": "/sign-in.html" },
+    { "source": "/sign-up", "destination": "/sign-up.html" }
   ]
 }

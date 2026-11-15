@@ -39,6 +39,15 @@ async function render(argument) {
 // "Viewing as" picker: switches the demo identity so officer and member views can be compared.
 async function setupIdentity() {
   const select = document.querySelector('#identity');
+  const identity = await api('/auth/me');
+  if (identity.meta.authentication === 'clerk') {
+    const profile = identity.data.profile;
+    document.querySelector('#identity-avatar').textContent = initials(profile.name);
+    document.querySelector('#identity-name').textContent = profile.name;
+    document.querySelector('#identity-detail').textContent = [profile.major, profile.universityId].filter(Boolean).join(' · ');
+    setCurrentMemberId(profile.internalMemberId);
+    return;
+  }
   const { data: clubs } = await api('/clubs');
   const rosters = await Promise.all(clubs.map(c => api(`/clubs/${c.id}/roster`)));
   const seen = new Set();

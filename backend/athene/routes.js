@@ -23,6 +23,14 @@ export function atheneRoutes({ db, config, authenticate, service }) {
     try { req.atheneMemberId = await authenticate(req); id.parse(req.params.projectId); await service.authorize(req.atheneMemberId, req.params.projectId, req.method === 'POST' && req.path.startsWith('/documents')); next(); }
     catch (error) { next(error); }
   });
+  router.use((req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') return next();
+    const origin = req.headers.origin;
+    let originHost;
+    try { originHost = origin && new URL(origin).host; } catch { return next(fail(403, 'CROSS_SITE_REQUEST', 'Cross-site Athena requests are not allowed.')); }
+    if (req.headers['sec-fetch-site'] === 'cross-site' || (originHost && originHost !== req.headers.host)) return next(fail(403, 'CROSS_SITE_REQUEST', 'Cross-site Athena requests are not allowed.'));
+    next();
+  });
   // Per-process guard before buffering uploads; enforce a distributed quota at the gateway when scaling.
   let inflight = 0; const windows = new Map();
   router.use((req, res, next) => {
