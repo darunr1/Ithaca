@@ -6,10 +6,11 @@ import { createAtheneGemini } from './gemini.js';
 import { createAtheneRepository } from './repository.js';
 import { createAtheneService } from './service.js';
 import { fail } from './errors.js';
-import { MAX_FILE_BYTES } from './extraction.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const question = z.string().trim().min(1).max(2000);
+// Keep multipart requests below Vercel's 4.5 MB function request ceiling.
+const MAX_REQUEST_UPLOAD_BYTES = 4 * 1024 * 1024;
 export function atheneRoutes({ db, config, authenticate, service }) {
   const router = Router({ mergeParams: true });
   if (!config.ATHENE_ENABLED) {
@@ -36,10 +37,12 @@ export function atheneRoutes({ db, config, authenticate, service }) {
     next();
   });
   const send = (res, data) => res.json({ data, meta: { mode: 'atlas', fictional: false, feature: 'athene' } });
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_BYTES, files: 5, fields: 0, parts: 5 } }).array('files', 5);
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_REQUEST_UPLOAD_BYTES, files: 5, fields: 0, parts: 5 } }).array('files', 5);
   router.post('/documents', (req, res, next) => upload(req, res, async error => {
     try {
-      if (error) throw fail(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400, error.code || 'INVALID_UPLOAD', error.code === 'LIMIT_FILE_SIZE' ? 'Each document must be at most 5 MiB.' : 'Use multipart field files with one to five documents and no other fields.');
+      if (error) throw fail(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400, error.code || 'INVALID_UPLOAD', error.code === 'LIMIT_FILE_SIZE' ? 'Combined uploads must fit within the 4 MiB serverless limit.' : 'Use multipart field files with one to five documents and no other fields.');
+      const files = req.files || [];
+      if (files.reduce((total, file) => total + file.size, 0) > MAX_REQUEST_UPLOAD_BYTES) throw fail(413, 'UPLOAD_TOO_LARGE', 'Combined upload size must be at most 4 MiB on serverless deployments.');
       const documents = await service.upload(req.atheneMemberId, req.params.projectId, req.files);
       res.status(documents.some(d => d.status === 'failed') ? 207 : documents.some(d => d.status === 'processing') ? 202 : 200);
       send(res, { documents });

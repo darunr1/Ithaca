@@ -3,6 +3,7 @@ import { e, heading, notice } from '../shared/ui.js';
 
 // Keep the user-facing product name Athena while matching the existing backend API slug.
 const projectPath = '/projects/club-rocketry/athene';
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 async function renderAthena() {
   let documents = [];
@@ -26,7 +27,7 @@ function bindAthena() {
   const submitButton = document.querySelector('#athena-upload-submit');
   const status = document.querySelector('#athena-upload-status');
   let selectedFiles = [];
-  const chooseFiles = files => { if (files.length > 5) { selectedFiles = []; status.textContent = 'Choose no more than five files.'; return; } selectedFiles = files; status.textContent = `${files.length} file${files.length === 1 ? '' : 's'} selected. Click Upload documents to submit.`; };
+  const chooseFiles = files => { if (files.length > 5) { selectedFiles = []; status.textContent = 'Choose no more than five files.'; return; } if (files.reduce((total, file) => total + file.size, 0) > MAX_UPLOAD_BYTES) { selectedFiles = []; status.textContent = 'Keep the combined upload size under 4 MiB.'; return; } selectedFiles = files; status.textContent = `${files.length} file${files.length === 1 ? '' : 's'} selected. Click Upload documents to submit.`; };
   filesInput?.addEventListener('change', () => chooseFiles([...filesInput.files]));
   ['dragenter', 'dragover'].forEach(type => dropzone?.addEventListener(type, event => { event.preventDefault(); dropzone.classList.add('dragging'); }));
   ['dragleave', 'drop'].forEach(type => dropzone?.addEventListener(type, event => { event.preventDefault(); dropzone.classList.remove('dragging'); }));
