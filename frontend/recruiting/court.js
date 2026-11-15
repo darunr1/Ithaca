@@ -1,36 +1,61 @@
-import { searchProfiles, getDiscoveryOptions } from './discovery.js';
-import { e, heading, notice, sourceCard } from '../shared/ui.js';
-export async function renderCourt(filters = {}) {
-  if (typeof filters === 'string') filters = { skill: filters };
-  const [allProfiles, directoryOptions] = await Promise.all([searchProfiles(), getDiscoveryOptions()]);
-  const profiles = Object.values(filters).some(value => String(value ?? '').trim()) ? await searchProfiles(filters) : allProfiles;
-  const years = ['Freshman', 'Sophomore', 'Junior', 'Senior'];
-  const suggestions = {
-    state: directoryOptions.state,
-    name: allProfiles.map(p => p.member.name),
-    skill: allProfiles.flatMap(p => p.contributions.flatMap(c => c.skills)),
-    major: [...directoryOptions.major, ...allProfiles.map(p => p.member.major)],
-    university: [...directoryOptions.university, ...allProfiles.map(p => p.university?.name)],
-    club: [...directoryOptions.club, ...allProfiles.flatMap(p => p.clubs.map(c => c.name))]
-  };
-  const input = (key, label, placeholder) => `<div class="court-field"><label for="court-${key}">${label}</label><div class="court-combobox"><input id="court-${key}" name="${key}" value="${e(filters[key])}" placeholder="${placeholder}" maxlength="${key === 'university' ? 200 : 80}" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="court-${key}-options" autocomplete="off"><span class="court-chevron" aria-hidden="true"></span><div id="court-${key}-options" class="court-options" role="listbox" aria-label="${label} suggestions" hidden>${[...new Set(suggestions[key].filter(Boolean))].sort((a, b) => a.localeCompare(b)).map((value, i) => `<div id="court-${key}-option-${i}" class="court-option" role="option" aria-selected="false" data-value="${e(value)}">${e(value)}</div>`).join('')}</div></div></div>`;
-  return `${heading('THE COURT / RECOGNITION & OPPORTUNITY', 'Discover the work. Meet the engineer.', 'Find students, future teammates, and the next generation of club leaders.')}${notice('Fictional discovery preview. Only opted-in members appear. Connections and student acceptance are planned.')}
-  <form id="court-search" class="panel court-search" role="search" aria-label="Search students">
-    <div class="court-search-heading"><div><p class="eyebrow">STUDENT DIRECTORY</p><h2>Find your next collaborator</h2><p class="body-copy">Search by name or demonstrated skills, then narrow your results.</p></div><span class="pill outline">Opted-in students only</span></div>
-    <div class="court-fields court-primary-fields">
-      ${input('name', 'Real name', 'e.g. Leo Marin')}
-      ${input('skill', 'Skills', 'e.g. CAN or firmware')}
+import { api } from '../shared/api.js';
+import { e } from '../shared/ui.js';
+
+const state = { mode: 'clubs', clubId: '', universityId: '' };
+function scoreRows(rows, metric, who) {
+  if (!rows.length) return '<div class="module-empty-state"><strong>No ranked activity yet</strong><p>Rankings appear automatically after officers approve real contributions or record attendance. No sample scores are inserted.</p></div>';
+  return `<div class="court-ranking-list">${rows.map((item, index) => `<article class="court-ranking-row ${index < 3 ? 'court-top-three' : ''}">
+    <div class="court-place">#${e(item.rank ?? (index + 1))}</div><div class="court-ranking-person"><strong>${e(who(item))}</strong><small>${e(item.major || item.clubs?.join(', ') || '')}</small></div>
+    <div class="court-ranking-score"><strong>${e(item[metric] ?? 0)}</strong><small>${metric === 'contributions' ? 'Approved contributions' : 'Activity points'}</small></div>
+  </article>`).join('')}</div>`;
+}
+export async function renderCourt(input = {}) {
+  if (input && typeof input === 'object') Object.assign(state, Object.fromEntries(Object.entries(input).filter(([key]) => ['mode', 'clubId', 'universityId'].includes(key))));
+  const [{ data: clubs }, { data: universities }, { data: leaderboard }, { data: me }] = await Promise.all([
+    api('/clubs'), api('/universities'), api('/leaderboard'), api('/auth/me')
+  ]);
+  if (!state.clubId || !clubs.some(c => c.id === state.clubId)) state.clubId = clubs[0]?.id || '';
+  const meUniversity = me.profile?.universityId || clubs[0]?.universityId || universities[0]?.universityId || '';
+  if (!state.universityId) state.universityId = universities.find(u => u.universityId === meUniversity)?.universityId || meUniversity || '';
+  const visibleSchool = universities.find(u => u.universityId === state.universityId);
+  const club = clubs.find(c => c.id === state.clubId);
+  const [clubRanks, schoolRanks] = await Promise.all([
+    club ? api(`/clubs/${encodeURIComponent(club.id)}/rankings?range=all`).then(r => r.data) : Promise.resolve(null),
+    state.universityId ? api(`/universities/${encodeURIComponent(state.universityId)}/leaderboard`).then(r => r.data).catch(() => null) : Promise.resolve(null)
+  ]);
+  const clubRows = clubRanks?.rows || [];
+  const schoolRows = schoolRanks?.rows || [];
+  const globalRows = leaderboard.rows || [];
+  const rows = state.mode === 'clubs' ? clubRows : state.mode === 'university' ? schoolRows : globalRows;
+  const metric = state.mode === 'clubs' ? 'points' : 'contributions';
+  const title = state.mode === 'clubs' ? club?.name || 'Your club' : state.mode === 'university' ? schoolRanks?.university?.name || visibleSchool?.name || me.profile?.universityName || 'Your university' : 'Across participating universities';
+  const selected = state.mode === 'clubs' ? 'Club' : state.mode === 'university' ? 'University' : 'Cross-university';
+  return `<div class="module-page module-court">
+    <header class="module-hero court-hero"><div><span class="module-kicker">THE COURT / ENGINEERING RECOGNITION</span><h1>Where the work speaks.</h1><p>Discover the people and organizations making measurable contributions, backed by the work actually recorded in Ithaca.</p></div><div class="module-hero-symbol" aria-hidden="true">◎</div></header>
+    <div class="module-heading"><div><span>LEADERBOARDS / RECORDED ACTIVITY</span><h2>Rankings and recognition</h2></div><p>Never an assessment of someone's potential or engineering ability.</p></div>
+    <div class="court-tabs" role="group" aria-label="Ranking scope">
+      <button type="button" data-court-mode="clubs" ${state.mode === 'clubs' ? 'aria-pressed="true"' : ''}>My club</button>
+      <button type="button" data-court-mode="university" ${state.mode === 'university' ? 'aria-pressed="true"' : ''}>University</button>
+      <button type="button" data-court-mode="global" ${state.mode === 'global' ? 'aria-pressed="true"' : ''}>All universities</button>
     </div>
-    <div class="court-filter-label">NARROW YOUR SEARCH <span>All filters are optional</span></div>
-    <div class="court-fields court-secondary-fields">
-      ${input('major', 'Major', 'e.g. Computer Engineering')}
-      ${input('university', 'University', 'e.g. Aster University')}
-      ${input('state', 'State', 'e.g. Texas')}
-      <div class="court-field"><label for="court-year">Year of study</label><select id="court-year" name="year"><option value="">Any year</option>${years.map((label, i) => { const year = i + 1; return `<option value="${year}"${String(filters.year) === String(year) ? ' selected' : ''}>${label}</option>`; }).join('')}</select></div>
-      ${input('club', 'Club', 'e.g. Rocketry')}
+    <div class="court-ranking-shell">
+      <div class="court-ranking-header"><div><span class="module-panel-kicker">${e(selected.toUpperCase())} / LEADERBOARD</span><h2>${e(title)}</h2><p>${rows.length} ranked contributors · ${state.mode === 'clubs' ? 'Contributions + attendance' : 'Approved contributions only'}</p></div>
+        <div class="court-filters">
+          ${state.mode === 'clubs' && clubs.length > 1 ? `<label for="court-club">Club</label><select id="court-club">${clubs.map(c => `<option value="${e(c.id)}" ${state.clubId === c.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select>` : ''}
+          ${state.mode === 'university' ? `<label for="court-university">University</label><select id="court-university"><option value="${e(meUniversity)}">${e(me.profile?.universityName || 'My university')}</option>${universities.filter(u => u.universityId !== meUniversity).map(u => `<option value="${e(u.universityId)}" ${state.universityId === u.universityId ? 'selected' : ''}>${e(u.name)}</option>`).join('')}</select>` : ''}
+        </div>
+      </div>
+      <div class="court-ranking-summary"><span>01 / Rankings update from verified activity</span><strong>${rows.length ? e(rows[0][metric]) : '0'}</strong><small>Leading ${metric === 'points' ? 'points' : 'contribution count'} in view</small></div>
+      ${scoreRows(rows, metric, row => row.name)}
     </div>
-    <div class="court-search-footer"><p>Skills are backed by approved contributions.</p><div class="actions"><button type="button" id="court-clear" class="secondary">Clear filters</button><button type="submit">Search students <span aria-hidden="true">&rarr;</span></button></div></div>
-  </form>
-  <div class="court-results-heading"><h2>Meet the engineers</h2><p class="body-copy" role="status">${profiles.length} ${profiles.length === 1 ? 'student' : 'students'} found</p></div>
-  <div class="profile-grid court-profiles">${profiles.map(p => `<section class="panel court-profile"><div class="section-title"><div><p class="eyebrow">OPTED INTO DISCOVERY</p><h2>${e(p.member.name)}</h2></div><span class="avatar" aria-hidden="true">${e(p.member.name.split(' ').map(n => n[0]).join(''))}</span></div><p class="body-copy">${e(p.member.major || 'Major not provided')}<br>${e(p.university?.name || 'University not provided')}${p.university?.state ? `, ${e(p.university.state)}` : ''} &middot; ${e(years[p.member.year - 1] || 'Year not provided')}</p><div class="tags">${p.clubs.map(c => `<span>${e(c.name)}</span>`).join('')}</div><div class="court-profile-work"><p class="court-work-label">DEMONSTRATED SKILLS</p><div class="tags">${[...new Set(p.contributions.flatMap(c => c.skills))].map(skill => `<span>${e(skill)}</span>`).join('') || '<span>No reviewed skills yet</span>'}</div>${p.contributions.length ? `<details class="court-evidence"><summary>View ${p.contributions.length} approved ${p.contributions.length === 1 ? 'contribution' : 'contributions'}</summary><div>${p.contributions.map(sourceCard).join('')}</div></details>` : '<p class="empty">No approved engineering evidence yet.</p>'}</div><div class="court-profile-footer"><button disabled>Request connection &middot; planned</button></div></section>`).join('') || '<p class="empty">No opted-in profiles match your filters. Try fewer filters or clear them to see everyone available.</p>'}</div>`;
+    <section class="module-panel court-university-overview"><div class="module-panel-head"><div><span>UNIVERSITY ACTIVITY</span><h2>Participating universities</h2></div><span class="module-muted">Officer-approved work only</span></div>
+      ${universities.length ? universities.slice(0, 15).map((u, i) => `<div class="court-school-row"><span>#${i + 1}</span><strong>${e(u.name)}</strong><span>${u.contributors} contributors</span><b>${u.contributions} contributions</b></div>`).join('') : '<p class="module-empty">No universities have approved contributions yet. Your club can be the first.</p>'}
+    </section>
+    <p class="module-disclaimer">All rankings are descriptive, not a prediction of competence. University-level rankings use approved contribution records; club activity also includes attendance.</p>
+  </div>`;
+}
+export function bindCourt(root, rerender) {
+  root.querySelectorAll('[data-court-mode]').forEach(button => button.addEventListener('click', () => rerender({ mode: button.dataset.courtMode })));
+  root.querySelector('#court-university')?.addEventListener('change', event => rerender({ universityId: event.target.value }));
+  root.querySelector('#court-club')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
 }

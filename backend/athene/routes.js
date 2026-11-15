@@ -3,7 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { createAuthenticator } from './auth.js';
 import { createAtheneGemini } from './gemini.js';
-import { createAtheneRepository } from './repository.js';
+import { createAtheneRepository, setupAthene } from './repository.js';
 import { createAtheneService } from './service.js';
 import { fail } from './errors.js';
 
@@ -57,6 +57,35 @@ export function atheneRoutes({ db, config, authenticate, service }) {
     } catch (error) { next(error); }
     finally { req.releaseAthene?.(); }
   }));
+  router.post('/initialize', async (req, res, next) => {
+    try {
+      await service.authorize(req.atheneMemberId, req.params.projectId, true);
+      await setupAthene(db, config, true);
+      const indexes = await db.collection('atheneChunks').listSearchIndexes(config.MONGODB_VECTOR_INDEX).toArray();
+      send(res, { index: config.MONGODB_VECTOR_INDEX, ready: Boolean(indexes[0]?.queryable && indexes[0]?.status === 'READY'),
+        note: 'MongoDB Atlas Vector Search indexing may take several minutes. Retry when READY.' });
+    } catch (error) { next(error); }
+    finally { req.releaseAthene?.(); }
+  });
+  router.post('/diagnostics', async (req, res, next) => {
+    try {
+      await service.authorize(req.atheneMemberId, req.params.projectId, true);
+      // Explicit opt-in probe: validates the real Gemini key / embedding model without
+      // exposing credentials or uploading any user content. Protected by the rate limiter.
+      const gemini = createAtheneGemini(config);
+      const vectors = await gemini.embed(['Ithaca engineering document retrieval health check'], 'RETRIEVAL_QUERY', AbortSignal.timeout(15000));
+      const indexes = await db.collection('atheneChunks').listSearchIndexes(config.MONGODB_VECTOR_INDEX).toArray();
+      const index = indexes[0];
+      send(res, {
+        embeddings: vectors.length === 1 && vectors[0].length === config.EMBEDDING_DIMENSIONS ? 'ready' : 'invalid',
+        embeddingModel: config.GEMINI_EMBEDDING_MODEL,
+        vectorIndex: index?.status || 'MISSING',
+        vectorQueryable: Boolean(index?.queryable),
+        note: 'This checks Gemini embeddings and the Atlas search index. Upload a real document and ask a cited question to verify the complete RAG flow.'
+      });
+    } catch (error) { next(error); }
+    finally { req.releaseAthene?.(); }
+  });
   router.get('/documents', async (req, res) => {
     const before = req.query.before === undefined ? undefined : id.parse(req.query.before);
     const documents = await service.list(req.atheneMemberId, req.params.projectId, before);

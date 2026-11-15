@@ -1,14 +1,14 @@
 import { api, currentMemberId, setCurrentMemberId } from './shared/api.js';
 import { e, initials } from './shared/ui.js';
-import { renderHome } from './core/home.js';
+import { renderHome, bindHome } from './core/home.js';
 import { renderAthena, bindAthena } from './core/athena.js';
 import { renderKleos, bindKleos } from './core/kleos.js';
 import { renderMember } from './core/member.js';
 import { bindCourtSuggestions } from './recruiting/suggestions.js';
-import { renderCourt } from './recruiting/court.js';
-import { renderBow } from './recruiting/bow.js';
+import { renderCourt, bindCourt } from './recruiting/court.js';
+import { renderBow, bindBow } from './recruiting/bow.js';
 // [title, view, bind?, nav section]
-const pages = { home: ['Ithaca Home', renderHome], athena: ['Athena', renderAthena], kleos: ['Kleos Ledger', renderKleos, bindKleos], member: ['Member stats', renderMember, null, 'kleos'], court: ['The Court', renderCourt], bow: ['Bow', renderBow] };
+const pages = { home: ['Ithaca Home', renderHome, bindHome], athena: ['Athena', renderAthena], kleos: ['Kleos Ledger', renderKleos, bindKleos], member: ['Member stats', renderMember, null, 'kleos'], court: ['The Court', renderCourt, bindCourt], bow: ['Bow', renderBow, bindBow] };
 let revision = 0;
 async function render(argument) {
   const currentRevision = ++revision;
@@ -18,6 +18,7 @@ async function render(argument) {
   document.title = `${title} · Ithaca`;
   document.querySelector('#breadcrumb').textContent = title;
   document.querySelectorAll('nav a').forEach(link => { if (link.dataset.page === section) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
+  document.querySelectorAll('.module-top-nav a').forEach(link => { if (link.dataset.moduleLink === section) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
   const content = document.querySelector('#content');
   content.setAttribute('aria-busy', 'true');
   try {
@@ -27,9 +28,8 @@ async function render(argument) {
     if (argument === undefined) window.scrollTo(0, 0);
     bind?.(content, next => render(next)); // Kleos binds its own controls, including #ranking-range
     if (key === 'athena') bindAthena();
-    bindCourtSuggestions(content);
-    document.querySelector('#court-search')?.addEventListener('submit', event => { event.preventDefault(); render(Object.fromEntries(new FormData(event.target))); });
-    document.querySelector('#court-clear')?.addEventListener('click', () => render({}));
+    if (key === 'court') bindCourtSuggestions(content);
+
   } catch (error) {
     if (currentRevision !== revision) return;
     content.innerHTML = `<div class="notice" role="alert">${e(error.message)} No replacement demo data was loaded.</div><button id="retry">Try again</button>`;

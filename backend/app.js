@@ -5,6 +5,7 @@ import { createRepository } from './repositories/records.js';
 import { createWorkspace } from './services/workspace.js';
 import { readRoutes } from './routes/read.js';
 import { plannedRoutes } from './routes/planned.js';
+import { organizationRoutes } from './routes/organizations.js';
 import { atheneRoutes } from './athene/routes.js';
 import { ledgerRoutes } from './routes/ledger.js';
 import { createCollegeDirectory } from './services/colleges.js';
@@ -37,6 +38,7 @@ export function createApp({ config, db = null, athene = {}, authentication = {} 
   });
   if (config.AUTH_MODE !== 'supabase') app.use('/api/athena-session', athenaSessionRoutes({ config, db }));
   app.use('/api', supabaseIdentity({ config, db, verify: authentication.verify }));
+  if (config.AUTH_MODE === 'supabase') app.use('/api/organizations', organizationRoutes({ db, send }));
   app.use('/api', readRoutes({ repository, workspace, send, config }));
   const authenticate = config.AUTH_MODE === 'supabase' ? async req => req.memberId || Promise.reject(fail(401, 'UNAUTHENTICATED', 'Sign in to continue.')) : athene.authenticate;
   app.use('/api/projects/:projectId/athene', atheneRoutes({ db, config, ...athene, authenticate }));

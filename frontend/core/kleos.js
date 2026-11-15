@@ -1,6 +1,6 @@
 import { api, currentMemberId } from '../shared/api.js';
 import { e, heading, memberLink } from '../shared/ui.js';
-const state = { range: 'all', flash: null, openRequests: false };
+const state = { range: 'all', clubId: '', flash: null, openRequests: false };
 const RANGES = { all: 'All time', week: 'This week' };
 const LEVELS = { low: 'Low · 30', medium: 'Medium · 60', high: 'High · 90' };
 const LEVEL_POINTS = { low: 30, medium: 60, high: 90 };
@@ -52,15 +52,34 @@ export async function renderKleos(argument) {
   else if (argument && typeof argument === 'object') Object.assign(state, argument);
   const [{ data: profile }, { data: clubs }] = await Promise.all([api(`/members/${encodeURIComponent(currentMemberId())}`), api('/clubs')]);
   const me = profile.member;
-  const club = clubs.find(c => c.id === me.clubIds[0]) || clubs[0];
+  if (!clubs.length) return '<div class="module-empty">Join or create an engineering organization to begin tracking contribution records.</div>';
+  if (!state.clubId || !clubs.some(c => c.id === state.clubId)) state.clubId = me.clubIds[0] || clubs[0].id;
+  const club = clubs.find(c => c.id === state.clubId) || clubs[0];
   const officer = club.officerIds.includes(me.id);
-  const [{ data: rankings }, side] = await Promise.all([
+  const [{ data: rankings }, side, { data: auth }] = await Promise.all([
     api(`/clubs/${club.id}/rankings?range=${state.range}`),
-    officer ? api(`/clubs/${club.id}/semesters`) : api(`/clubs/${club.id}/contribution-requests`)
+    officer ? api(`/clubs/${club.id}/semesters`) : api(`/clubs/${club.id}/contribution-requests`),
+    api('/auth/me')
   ]);
-  const html = `${heading('KLEOS / REPUTATION THROUGH DEEDS', 'The record behind the recognition.', 'Approved work, original evidence, and the people who made it happen.')}
-    <p class="viewing-as">Viewing as ${memberLink(me.id, me.name)} · ${officer ? 'Officer' : 'Member'} of ${e(club.name)} <span class="muted">(demo identity, not a sign-in)</span></p>
-    <div class="columns">${rankingPanel(club, rankings)}${officer ? semesterPanel(side.data, me.id) : requestPanel(club, side.data)}</div>`;
+  let roster;
+  if (auth.profile) roster = (await api(`/organizations/${club.id}/roster-stats`)).data;
+  else {
+    const members = (await api(`/clubs/${club.id}/roster`)).data;
+    roster = { members: members.map(m => ({ ...m, contributions: 0, sessions: 0,
+      officer: club.officerIds.includes(m.id), points: rankings.rows.find(row => row.memberId === m.id)?.points || 0 })) };
+  }
+  const memberRows = roster.members.map((m, i) => `<tr><td><span class="module-rank">#${i + 1}</span></td><td><a href="#member/${encodeURIComponent(m.id)}">${e(m.name)}</a>${m.officer ? ' <span class="module-chip">Officer</span>' : ''}<small class="module-table-sub">${e(m.major || 'Major not specified')}</small></td><td>${m.contributions}</td><td>${m.sessions}</td><td><strong>${m.points}</strong></td></tr>`).join('') || '<tr><td colspan="5" class="module-empty">No members have joined yet.</td></tr>';
+  const html = `<div class="module-page module-ledger">
+    <header class="module-hero"><div><span class="module-kicker">KLEOS LEDGER / RECOGNITION THROUGH DEEDS</span><h1>Proof over promises.</h1><p>Document engineering work, celebrate the contributors, and record officer-reviewed evidence. Every point traces back to activity in your club.</p></div><div class="module-hero-symbol" aria-hidden="true">▤</div></header>
+    <div class="module-context"><label for="kleos-club">Active organization</label><select id="kleos-club">${clubs.map(c => `<option value="${e(c.id)}" ${c.id === club.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select><span>${officer ? 'Officer review tools available' : 'Member contribution requests available'}</span></div>
+    <div class="module-heading"><div><span>CLUB RECORDS / ${e(club.name.toUpperCase())}</span><h2>Member roster and statistics</h2></div><p>${roster.members.length} members · ${roster.members.reduce((sum,m)=>sum+m.contributions,0)} reviewed contributions</p></div>
+    <section class="module-panel"><div class="module-panel-head"><div><span>RECORDED ACTIVITY</span><h2>All club members</h2></div><span class="module-chip">Real Atlas data</span></div>
+      <div class="table-wrap"><table class="module-roster-table"><thead><tr><th>#</th><th>Member</th><th>Contributions</th><th>Sessions</th><th>Points</th></tr></thead><tbody>${memberRows}</tbody></table></div>
+      <p class="module-muted">Only approved contributions and recorded attendance count. No fabricated points or rankings.</p>
+    </section>
+    <div class="module-heading"><div><span>LEDGER / ${e(officer ? 'OFFICER REVIEW' : 'YOUR WORK')}</span><h2>${officer ? 'Activity and approvals' : 'Contribution requests'}</h2></div></div>
+    <div class="module-two-col">${rankingPanel(club, rankings)}${officer ? semesterPanel(side.data, me.id) : requestPanel(club, side.data)}</div>
+  </div>`;
   state.openRequests = false;
   return html;
 }
@@ -144,6 +163,7 @@ function bindContributionRejects(root, rerender) {
 }
 export function bindKleos(root, rerender) {
   root.querySelector('#ranking-range')?.addEventListener('change', event => rerender({ range: event.target.value }));
+  root.querySelector('#kleos-club')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
   bindReviews(root, rerender);
   bindContributionRejects(root, rerender);
   const form = root.querySelector('#contribution-request');
