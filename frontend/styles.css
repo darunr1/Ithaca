@@ -196,3 +196,16 @@ tbody tr:hover{background:#ffffffa6}
 footer{color:var(--chestnut);border-top-color:var(--line)}
 
 @media(prefers-reduced-motion:reduce){.hero,.pending-dot{animation:none}button,.button,.evidence-card{transition:none}}
+
+/* Secure student signup / onboarding */
+.onboarding{max-width:700px;margin:26px auto;padding:clamp(22px,3vw,42px)}
+.onboarding form{display:grid;gap:10px;margin-top:24px}
+.onboarding label{font-size:13px;font-weight:700;margin-top:6px}
+.onboarding input:not([type="checkbox"]),.onboarding select{width:100%;background:#fff;border:1px solid var(--border);border-radius:9px;padding:12px 14px;color:var(--ink);font:inherit}
+.onboarding input[type="file"]{cursor:pointer;font-size:13px}
+.onboarding input[type="file"]::file-selector-button{border:0;border-radius:6px;padding:8px 12px;background:var(--frost);color:var(--ink);font-weight:700;margin-right:12px;cursor:pointer}
+.onboarding input:focus-visible,.onboarding select:focus-visible{outline:2px solid var(--holly);outline-offset:2px}
+.onboarding .file-help{color:var(--muted);font-size:12px;line-height:1.4;margin:0 0 8px}
+.onboarding .optional-label{font-weight:400;color:var(--muted)}
+#onboarding-status,#resume-update-status{min-height:24px;color:var(--pine);font-size:13px;margin:6px 0}
+@media(max-width:680px){.onboarding{margin:15px 0;padding:22px}}

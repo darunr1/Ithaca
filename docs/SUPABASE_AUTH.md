@@ -62,6 +62,8 @@ npm run athene:setup
 
 `db:setup` installs the `userProfiles` validator, the unique `(authProvider, authProviderUserId)` and `internalMemberId` indexes, and the sparse unique `members.supabaseUserId` index. `athene:setup` creates the document/chunk indexes; wait until `athene_chunks_vector` is READY.
 
+After email verification, the member onboarding screen records the student's university or college (searchable against the College Board directory, with free-text fallback), academic classification (freshman, sophomore, junior, senior, or graduate), major, and graduation year. The optional PDF/DOCX resume is uploaded separately through authenticated `POST /api/auth/resume` before onboarding finishes; the limit is 2 MiB. File bytes are stored in a private Atlas `resumeFiles` collection, and the `userProfiles.resume` field stores only metadata. The file is never included in `GET /api/auth/me`, in public member records, or shared with recruiters. Only the same verified account can download (`GET /api/auth/resume`) or delete (`DELETE /api/auth/resume`) it. Run `npm run db:setup` to apply the collection validator and indexes; Atlas can create the new collection on the first upload without requiring a new build hook.
+
 New verified users are provisioned on their first authenticated request with `role=member`, no clubs, no visibility, and no officer/admin/recruiter rights. Onboarding creates the compatible `members` record using the verified Supabase UUID. A club administrator must grant club membership separately.
 
 ## 4. Link an existing Ithaca member
@@ -99,7 +101,7 @@ Do not copy Clerk IDs into Supabase fields. Existing Clerk profile records must 
 ## 5. Production verification
 
 1. Open `/signup`, create an account, and verify it through the email link.
-2. Confirm the browser reaches `/dashboard` and Atlas contains one `userProfiles` record for the Supabase UUID.
+2. Confirm the browser reaches `/dashboard` and Atlas contains one `userProfiles` record for the Supabase UUID. Enter a real university and classification, optionally upload a PDF resume, and confirm the owner can download it.
 3. Complete onboarding; confirm the new `members` record has no clubs or privileged roles.
 4. Log out. `/dashboard` must redirect to `/login`, and `/api/clubs` without a bearer token must return 401.
 5. Link the intended demo officer with the migration above. Sign in and verify Home, Athena, Kleos Ledger, Court, and Bow.
