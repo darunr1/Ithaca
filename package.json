@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Engineering contributions, remembered. HackUTA foundation.",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "node --watch backend/server.js",
@@ -22,6 +22,7 @@
     "test:athene:integration": "node --test tests/athene.integration.test.js"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.90",
     "@google/genai": "^1.0.0",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",

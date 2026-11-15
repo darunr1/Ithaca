@@ -1,7 +1,7 @@
 import { extname } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
-// pdf-parse is imported lazily inside extractFile: loading pdfjs-dist at startup crashes serverless
-// runtimes (Vercel) that lack the optional native @napi-rs/canvas package, taking down every API route.
+// Keep pdf-parse lazy: loading pdfjs-dist during a Vercel cold start can require
+// optional canvas globals and crash every API route before Express initializes.
 import { unzipSync, strFromU8 } from 'fflate';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { fail } from './errors.js';

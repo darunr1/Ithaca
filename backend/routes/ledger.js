@@ -14,9 +14,9 @@ const requestBody = z.object({
 }).strict();
 // Kleos Ledger: member requests, officer semester history, university leaderboards.
 // The acting member comes from the X-Demo-Member header: a demo identity assertion, not authentication.
-export function ledgerRoutes({ workspace, send }) {
+export function ledgerRoutes({ workspace, send, config }) {
   const router = Router();
-  const actor = req => workspace.actor(req.get('X-Demo-Member') ? id.parse(req.get('X-Demo-Member')) : null);
+  const actor = req => workspace.actor(config.AUTH_MODE === 'clerk' ? req.memberId : req.get('X-Demo-Member') ? id.parse(req.get('X-Demo-Member')) : null);
   router.get('/clubs/:id/semesters', async (req, res) => send(res, await workspace.semesters(id.parse(req.params.id), await actor(req))));
   router.get('/clubs/:id/contribution-requests', async (req, res) => send(res, await workspace.myRequests(id.parse(req.params.id), await actor(req))));
   router.post('/clubs/:id/contribution-requests', async (req, res) => {

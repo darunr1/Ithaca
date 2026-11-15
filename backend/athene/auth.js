@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { fail } from './errors.js';
 
@@ -8,6 +8,19 @@ export function createAuthenticator(config) {
   const keys = config.AUTH_JWKS_URL ? createRemoteJWKSet(new URL(config.AUTH_JWKS_URL), { timeoutDuration: 5000 }) : null;
   return async req => {
     const cookies = Object.fromEntries((req.headers.cookie || '').split(';').map(part => part.trim().split('=').map(decodeURIComponent)).filter(([key, value]) => key && value));
+    if (cookies.athena_session && config.AUTH_SESSION_SECRET) {
+      const [encoded, signature] = cookies.athena_session.split('.');
+      if (encoded && signature) {
+        const expected = createHmac('sha256', config.AUTH_SESSION_SECRET).update(encoded).digest('base64url');
+        const actualBytes = Buffer.from(signature); const expectedBytes = Buffer.from(expected);
+        if (actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes)) {
+          try {
+            const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+            if (payload.v === 1 && payload.sub === config.AUTH_SESSION_MEMBER_ID && typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000)) return payload.sub;
+          } catch { /* Invalid cookies fail as unauthenticated. */ }
+        }
+      }
+    }
     const match = /^Bearer ([^\s]+)$/.exec(req.headers.authorization || '') || (cookies.athena_dev_session ? ['', cookies.athena_dev_session] : null);
     if (!match) throw fail(401, 'UNAUTHENTICATED', 'A bearer token is required.');
     if (config.ATHENE_DEV_TOKEN) {
@@ -20,8 +33,14 @@ export function createAuthenticator(config) {
         if (typeof payload.sub === 'string' && payload.sub.length <= 128) return payload.sub;
       } catch { /* Never expose token or provider error details. */ }
     }
-    throw fail(401, 'UNAUTHENTICATED', 'Invalid or expired bearer token.');
+    throw fail(401, 'UNAUTHENTICATED', 'Sign in to Athena or provide a valid bearer token.');
   };
+}
+
+export function createSessionCookie(config, now = Date.now()) {
+  const payload = Buffer.from(JSON.stringify({ v: 1, sub: config.AUTH_SESSION_MEMBER_ID, iat: Math.floor(now / 1000), exp: Math.floor(now / 1000) + 8 * 60 * 60 })).toString('base64url');
+  const signature = createHmac('sha256', config.AUTH_SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
 }
 
 export async function authorizeProject(db, memberId, projectId, write = false) {

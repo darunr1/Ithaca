@@ -6,9 +6,11 @@ This is an initial foundation, not the complete hackathon product. All bundled i
 
 **Athena backend:** project-document ingestion, Gemini RAG and MongoDB Atlas Vector Search are now available as an opt-in backend module. See [Athena setup and demo](docs/ATHENE_SETUP.md) and [API/team contracts](docs/ATHENE_API.md). Contribution proposals and approvals belong to the Kleos Ledger; Athena answers from uploaded project sources. This does not add authentication to unrelated foundation routes. The foundation status below describes the original shared application.
 
+**Production authentication:** the public landing page and Clerk-protected workspace are documented in [Clerk production setup](docs/CLERK_SETUP.md). `AUTH_MODE=demo` keeps the explicitly fictional local workflow; production uses `AUTH_MODE=clerk` with Atlas-backed profiles.
+
 ## Run locally
 
-Use Node.js 22.13+ (Node 24 LTS recommended) and npm.
+Use Node.js 24 LTS and npm. The major is pinned because the optional PDF stack is runtime-sensitive.
 
 ```powershell
 npm ci
@@ -61,7 +63,7 @@ In Atlas mode, **all implemented reads use Atlas**, including aggregation for ac
 ```dotenv
 AI_MODE=live
 GEMINI_API_KEY=<server-side-key>
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 ```
 
 Verify that the configured model is available to your key, then run `npm run ai:verify`. The model is configurable; the supplied name is a starting default, not an availability guarantee. The foundation uses the official `@google/genai` SDK and `responseJsonSchema`; see [Google's structured output documentation](https://ai.google.dev/gemini-api/docs/structured-output).
