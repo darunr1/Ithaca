@@ -15,7 +15,7 @@ export async function renderCourt(input = {}) {
     api('/clubs'), api('/universities'), api('/leaderboard'), api('/auth/me')
   ]);
   if (!state.clubId || !clubs.some(c => c.id === state.clubId)) state.clubId = clubs[0]?.id || '';
-  const meUniversity = me.profile.universityId;
+  const meUniversity = me.profile?.universityId || clubs[0]?.universityId || universities[0]?.universityId || '';
   if (!state.universityId) state.universityId = universities.find(u => u.universityId === meUniversity)?.universityId || meUniversity || '';
   const visibleSchool = universities.find(u => u.universityId === state.universityId);
   const club = clubs.find(c => c.id === state.clubId);
@@ -28,7 +28,7 @@ export async function renderCourt(input = {}) {
   const globalRows = leaderboard.rows || [];
   const rows = state.mode === 'clubs' ? clubRows : state.mode === 'university' ? schoolRows : globalRows;
   const metric = state.mode === 'clubs' ? 'points' : 'contributions';
-  const title = state.mode === 'clubs' ? club?.name || 'Your club' : state.mode === 'university' ? schoolRanks?.university?.name || visibleSchool?.name || me.profile.universityName || 'Your university' : 'Across participating universities';
+  const title = state.mode === 'clubs' ? club?.name || 'Your club' : state.mode === 'university' ? schoolRanks?.university?.name || visibleSchool?.name || me.profile?.universityName || 'Your university' : 'Across participating universities';
   const selected = state.mode === 'clubs' ? 'Club' : state.mode === 'university' ? 'University' : 'Cross-university';
   return `<div class="module-page module-court">
     <header class="module-hero court-hero"><div><span class="module-kicker">THE COURT / ENGINEERING RECOGNITION</span><h1>Where the work speaks.</h1><p>Discover the people and organizations making measurable contributions, backed by the work actually recorded in Ithaca.</p></div><div class="module-hero-symbol" aria-hidden="true">◎</div></header>
@@ -42,7 +42,7 @@ export async function renderCourt(input = {}) {
       <div class="court-ranking-header"><div><span class="module-panel-kicker">${e(selected.toUpperCase())} / LEADERBOARD</span><h2>${e(title)}</h2><p>${rows.length} ranked contributors · ${state.mode === 'clubs' ? 'Contributions + attendance' : 'Approved contributions only'}</p></div>
         <div class="court-filters">
           ${state.mode === 'clubs' && clubs.length > 1 ? `<label for="court-club">Club</label><select id="court-club">${clubs.map(c => `<option value="${e(c.id)}" ${state.clubId === c.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select>` : ''}
-          ${state.mode === 'university' ? `<label for="court-university">University</label><select id="court-university"><option value="${e(meUniversity)}">${e(me.profile.universityName || 'My university')}</option>${universities.filter(u => u.universityId !== meUniversity).map(u => `<option value="${e(u.universityId)}" ${state.universityId === u.universityId ? 'selected' : ''}>${e(u.name)}</option>`).join('')}</select>` : ''}
+          ${state.mode === 'university' ? `<label for="court-university">University</label><select id="court-university"><option value="${e(meUniversity)}">${e(me.profile?.universityName || 'My university')}</option>${universities.filter(u => u.universityId !== meUniversity).map(u => `<option value="${e(u.universityId)}" ${state.universityId === u.universityId ? 'selected' : ''}>${e(u.name)}</option>`).join('')}</select>` : ''}
         </div>
       </div>
       <div class="court-ranking-summary"><span>01 / Rankings update from verified activity</span><strong>${rows.length ? e(rows[0][metric]) : '0'}</strong><small>Leading ${metric === 'points' ? 'points' : 'contribution count'} in view</small></div>

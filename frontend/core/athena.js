@@ -12,7 +12,7 @@ async function renderAthena() {
   if (!clubs.length) return '<div class="module-empty">Create or join an engineering club before using Athena’s document archive.</div>';
   if (!activeClubId || !clubs.some(club => club.id === activeClubId)) activeClubId = clubs[0].id;
   const club = clubs.find(item => item.id === activeClubId);
-  const canUpload = club.officerIds.includes(me.profile.internalMemberId);
+  const canUpload = !me.profile || club.officerIds.includes(me.profile.internalMemberId);
   let session;
   try {
     const identity = await api('/auth/me');

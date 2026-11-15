@@ -9,7 +9,7 @@ export async function renderBow(input = {}) {
   if (!state.clubId || !clubs.some(c => c.id === state.clubId)) state.clubId = clubs[0]?.id || '';
   const club = clubs.find(c => c.id === state.clubId);
   if (!club) return '<div class="module-empty">Start or join a club before working on leadership succession.</div>';
-  const isOfficer = club.officerIds.includes(me.profile.internalMemberId);
+  const isOfficer = Boolean(me.profile && club.officerIds.includes(me.profile.internalMemberId));
   if (!isOfficer) return `<div class="module-page"><header class="module-hero"><div><span class="module-kicker">BOW / LEADERSHIP CONTINUITY</span><h1>Passing the torch is deliberate.</h1><p>Officer succession plans are maintained by your club's current officers. You can ask a club officer to consider you for an open role.</p></div></header><section class="module-panel"><h2>Officer access required</h2><p>Bow uses approved contribution evidence and explicit human nominations. No member is promoted automatically.</p></section></div>`;
   const { data: succession } = await api(`/organizations/${encodeURIComponent(club.id)}/succession`);
   const roles = succession.roles || [];

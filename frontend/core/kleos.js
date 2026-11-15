@@ -56,11 +56,18 @@ export async function renderKleos(argument) {
   if (!state.clubId || !clubs.some(c => c.id === state.clubId)) state.clubId = me.clubIds[0] || clubs[0].id;
   const club = clubs.find(c => c.id === state.clubId) || clubs[0];
   const officer = club.officerIds.includes(me.id);
-  const [{ data: rankings }, side, { data: roster }] = await Promise.all([
+  const [{ data: rankings }, side, { data: auth }] = await Promise.all([
     api(`/clubs/${club.id}/rankings?range=${state.range}`),
     officer ? api(`/clubs/${club.id}/semesters`) : api(`/clubs/${club.id}/contribution-requests`),
-    api(`/organizations/${club.id}/roster-stats`)
+    api('/auth/me')
   ]);
+  let roster;
+  if (auth.profile) roster = (await api(`/organizations/${club.id}/roster-stats`)).data;
+  else {
+    const members = (await api(`/clubs/${club.id}/roster`)).data;
+    roster = { members: members.map(m => ({ ...m, contributions: 0, sessions: 0,
+      officer: club.officerIds.includes(m.id), points: rankings.rows.find(row => row.memberId === m.id)?.points || 0 })) };
+  }
   const memberRows = roster.members.map((m, i) => `<tr><td><span class="module-rank">#${i + 1}</span></td><td><a href="#member/${encodeURIComponent(m.id)}">${e(m.name)}</a>${m.officer ? ' <span class="module-chip">Officer</span>' : ''}<small class="module-table-sub">${e(m.major || 'Major not specified')}</small></td><td>${m.contributions}</td><td>${m.sessions}</td><td><strong>${m.points}</strong></td></tr>`).join('') || '<tr><td colspan="5" class="module-empty">No members have joined yet.</td></tr>';
   const html = `<div class="module-page module-ledger">
     <header class="module-hero"><div><span class="module-kicker">KLEOS LEDGER / RECOGNITION THROUGH DEEDS</span><h1>Proof over promises.</h1><p>Document engineering work, celebrate the contributors, and record officer-reviewed evidence. Every point traces back to activity in your club.</p></div><div class="module-hero-symbol" aria-hidden="true">▤</div></header>

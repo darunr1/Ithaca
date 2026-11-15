@@ -5,11 +5,16 @@ export async function renderHome() {
   const [{ data: clubs }, { data: me }] = await Promise.all([api('/clubs'), api('/auth/me')]);
   if (!clubs.length) return '<div class="module-empty">Your club access is being set up. Return to your student profile to create or join an organization.</div>';
   const active = clubs[0];
-  const [{ data: stats }, { data: rankings }] = await Promise.all([
-    api(`/organizations/${encodeURIComponent(active.id)}/roster-stats`),
-    api(`/clubs/${encodeURIComponent(active.id)}/rankings?range=all`)
-  ]);
-  const isOfficer = active.officerIds.includes(me.profile.internalMemberId);
+  const { data: rankings } = await api(`/clubs/${encodeURIComponent(active.id)}/rankings?range=all`);
+  let stats;
+  if (me.profile) {
+    stats = (await api(`/organizations/${encodeURIComponent(active.id)}/roster-stats`)).data;
+  } else {
+    const { data: members } = await api(`/clubs/${encodeURIComponent(active.id)}/roster`);
+    stats = { members: members.map(m => ({ ...m, officer: active.officerIds.includes(m.id),
+      contributions: 0, points: rankings.rows.find(r => r.memberId === m.id)?.points || 0 })) };
+  }
+  const isOfficer = me.profile ? active.officerIds.includes(me.profile.internalMemberId) : false;
   const total = stats.members.reduce((sum, m) => sum + m.points, 0);
   const count = stats.members.reduce((sum, m) => sum + m.contributions, 0);
   const rows = stats.members.slice(0, 6).map((m, i) => `<div class="module-person-row"><span class="module-rank">${i+1}</span><span class="module-avatar">${e(m.name.split(' ').map(w=>w[0]).slice(0,2).join(''))}</span><div><strong>${e(m.name)}</strong><small>${e(m.major || 'Engineering member')}${m.officer ? ' · Officer' : ''}</small></div><span class="module-score">${m.points} pts</span></div>`).join('') || '<p class="module-empty">The member roster is currently empty.</p>';
