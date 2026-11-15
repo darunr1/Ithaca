@@ -184,3 +184,55 @@ body.club-workspace .court-tabs button[aria-pressed=true]{background:#5264be;col
 @media(max-width:1120px){.module-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.module-two-col,.bow-role-grid,.club-starter-grid{grid-template-columns:1fr}.club-invitations{border-left:0;border-top:1px solid var(--module-line);padding:21px 0 0}}
 @media(max-width:850px){body.club-workspace .module-top-nav{order:3;width:100%;margin:11px -4px 0}body.club-workspace .module-top-nav a{padding:12px 14px;min-height:43px}body.club-workspace .topbar{flex-wrap:wrap;height:auto;min-height:80px;padding-bottom:0}}
 @media(max-width:650px){body.club-workspace main{padding:24px 18px 50px}.module-hero{padding:30px 24px;min-height:240px}.module-hero-symbol{display:none}.module-metrics{grid-template-columns:1fr 1fr;gap:9px}.module-metrics article{padding:17px;min-height:110px}.module-metrics strong{font-size:25px}.module-link-grid{grid-template-columns:1fr}.court-ranking-header{padding:19px}.court-ranking-row{padding:14px 17px}.court-school-row{flex-wrap:wrap}.court-school-row>b{margin-left:auto}.module-context select{min-width:170px;max-width:100%}}
+
+/* Club membership inbox and member-ID sharing */
+.module-member-id{display:flex;align-items:center;flex-wrap:wrap;gap:18px}
+.module-member-id>div{flex:1;min-width:240px}
+.module-member-id strong{display:block;color:#293c73;font-size:13px;word-break:break-all}
+.module-member-id p{color:#7c899d;font-size:11px;margin:7px 0 0}
+.module-member-id button{background:#edf0ff;border:1px solid #dce2fa;border-radius:10px;color:#485bad;font-size:11px;padding:11px 14px;box-shadow:none}
+.module-member-id #copy-club-member-status{font-size:11px;color:#5064a9}
+.module-invitation-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 0;border-bottom:1px solid #e9edf5}
+.module-invitation-row:last-child{border-bottom:0}
+.module-invitation-row strong{display:block;color:#293956;font-size:12px}
+.module-invitation-row small{display:block;color:#8793a9;font-size:10px;margin-top:5px}
+.module-invitation-actions{display:flex;align-items:center;gap:9px}
+body.club-workspace .module-invitation-actions button{background:#5264bf;color:#fff;border-radius:9px;font-size:11px;padding:9px 13px;box-shadow:none}
+body.club-workspace .module-invitation-actions button.module-invite-decline{background:#f0f2fa;color:#66738c}
+.module-invite-pill{border-radius:999px;background:#fff5db;color:#8d6823;font-size:10px;font-weight:700;padding:7px 10px}
+.module-sent-invites{margin-top:25px;padding-top:19px;border-top:1px solid var(--module-line)}
+.module-sent-invites h3{color:#31415d;font-size:13px;margin:0 0 9px}
+/* Athena multi-query project intelligence and source-grounded reports */
+.athena-mode-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0}
+body.club-workspace .athena-mode-card{text-align:left;display:flex;align-items:flex-start;flex-direction:column;gap:11px;min-height:186px;background:#f8f9ff;border:1px solid #e4e8f6;border-radius:14px;padding:19px;color:#293955;box-shadow:none;transition:border-color .15s,background .15s}
+body.club-workspace .athena-mode-card:hover{border-color:#8e9bd9;background:#eff2ff}
+.athena-mode-card>span{display:grid;place-items:center;background:#e8ecff;border-radius:9px;width:35px;height:35px;color:#5266b5;font-size:18px}
+.athena-mode-card strong{font-size:13px;line-height:1.4}
+.athena-mode-card small{color:#7c889e;font-size:10px;line-height:1.65;flex:1}
+.athena-mode-card em{font-size:10px;color:#5368b5;font-style:normal;font-weight:800}
+.athena-reports{margin-top:29px;border-top:1px solid var(--module-line);padding-top:25px}
+.athena-report-count{font-size:11px;color:#8390aa}
+.athena-report{border:1px solid #e7eaf3;border-radius:13px;background:#fff;margin-top:10px}
+.athena-report>details>summary{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px;list-style:none}
+.athena-report>details>summary::-webkit-details-marker{display:none}
+.athena-report summary strong{display:block;font-size:12px;color:#293957}
+.athena-report summary small{display:block;color:#8b96a7;font-size:10px;margin-top:7px}
+.athena-report summary>span{color:#586abd;font-size:10px;white-space:nowrap}
+.athena-report-content{padding:0 20px 20px}
+.athena-claim{border:1px solid #e4e9f4;background:#fafbfe;border-radius:12px;padding:15px;margin:12px 0}
+.athena-claim-heading{display:flex;gap:12px;justify-content:space-between;align-items:center;color:#6575b8;font-size:10px;font-weight:800}
+.athena-claim-heading small{color:#8a94aa;font-weight:600}
+.athena-claim>p{font-size:12px;line-height:1.8;color:#2e3f61;white-space:pre-wrap}
+.athena-claim-evidence blockquote{margin:10px 0 0;padding:12px 14px;border-left:3px solid #b6c0ee;background:white;border-radius:0 8px 8px 0}
+.athena-claim-evidence blockquote p{margin:0;color:#405073;line-height:1.75;font-size:11px}
+.athena-claim-evidence blockquote footer{font-size:10px;color:#7b88a0;margin-top:8px}
+.athena-coverage{font-size:11px;color:#7181a4}
+.athena-citation-list{padding:14px 0;color:#6076b4;font-size:11px}
+.athena-citation-list summary{cursor:pointer}
+.athena-report-review{display:grid;gap:12px;margin-top:20px;padding-top:18px;border-top:1px solid var(--module-line)}
+.athena-report-review label{display:grid;gap:6px;font-size:11px;color:#394968;font-weight:700}
+.athena-report-review select,.athena-report-review textarea{padding:12px;border:1px solid var(--module-line);background:#fafbfe;border-radius:9px;color:#33445f;font-size:12px}
+body.club-workspace .athena-report-review button{justify-self:start;background:#5366ba;color:white;font-size:11px;padding:11px 15px;border-radius:9px;box-shadow:none}
+.athena-report-review [role=status]{color:#6373a7;font-size:11px}
+@media(max-width:1120px){.athena-mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.athena-mode-grid{grid-template-columns:1fr}.athena-report>details>summary{flex-wrap:wrap}.module-member-id{align-items:flex-start}}
