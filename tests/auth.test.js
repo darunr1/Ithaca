@@ -114,4 +114,45 @@ test('Supabase protects APIs, provisions onboarding, and never trusts client rol
   assert.equal((await fetch(`${root}/api/auth/resume`, { headers })).status, 404);
   assert.equal((await (await fetch(`${root}/api/clubs`, { headers })).json()).data.length, 0);
   assert.equal((await fetch(`${root}/api/clubs/club-secret/roster`, { headers })).status, 404);
+
+  // Legacy accounts incorrectly marked 'onboarded' must still complete missing student fields.
+  const savedProfile = [...db.data.get('userProfiles').values()][0];
+  const savedMember = [...db.data.get('members').values()][0];
+  savedProfile.classification = null;
+  savedProfile.universityName = null;
+  savedMember.classification = undefined;
+  savedMember.universityName = undefined;
+  const incompleteMe = await (await fetch(`${root}/api/auth/me`, { headers })).json();
+  assert.equal(incompleteMe.data.onboardingRequired, true);
+  const incompleteResponse = await fetch(`${root}/api/clubs`, { headers });
+  assert.equal(incompleteResponse.status, 403);
+  assert.equal((await incompleteResponse.json()).error.code, 'ONBOARDING_REQUIRED');
+
+  const finished = await fetch(`${root}/api/auth/onboarding`, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(onboardingData)
+  });
+  assert.equal(finished.status, 200);
+  assert.equal((await (await fetch(`${root}/api/auth/me`, { headers })).json()).data.onboardingRequired, false);
+  assert.equal(savedMember.classification, 'sophomore');
+
+  // Edits must update academic details without modifying existing club access.
+  savedMember.clubIds = ['club-existing'];
+  const edited = await fetch(`${root}/api/auth/onboarding`, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...onboardingData, classification: 'junior', major: 'Electrical Engineering' })
+  });
+  assert.equal(edited.status, 200);
+  assert.deepEqual(savedMember.clubIds, ['club-existing']);
+  assert.equal(savedMember.classification, 'junior');
+  assert.equal(savedMember.year, 3);
+  assert.equal(savedProfile.major, 'Electrical Engineering');
+
+  // Members cannot unilaterally change university while retaining club privileges.
+  const transfer = await fetch(`${root}/api/auth/onboarding`, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...onboardingData, universityName: 'Different University' })
+  });
+  assert.equal(transfer.status, 409);
+  assert.equal(savedMember.universityId, 'uni-a');
 });
