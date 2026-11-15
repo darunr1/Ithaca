@@ -257,7 +257,7 @@ test('setup touches only Athene collections and creates unique idempotency index
   const collections = []; const indexes = []; const searches = [];
   const db = { listCollections() { return { async toArray() { return []; } }; }, async createCollection(name) { collections.push(name); }, collection(name) { return { async createIndex(key, options) { indexes.push({ name, key, options }); }, listSearchIndexes() { return { async toArray() { return []; } }; }, async createSearchIndex(value) { searches.push(value); } }; } };
   await setupAthene(db, config, true);
-  assert.deepEqual(collections.sort(), ['atheneChunks', 'atheneDocuments', 'atheneFiles']);
+  assert.deepEqual(collections.sort(), ['atheneChunks', 'atheneDocuments', 'atheneFiles', 'atheneInsights']);
   assert.ok(indexes.some(i => i.key.contentHash && i.options.unique));
   assert.deepEqual(searches[0].definition, vectorDefinition(config));
 });
