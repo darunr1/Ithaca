@@ -66,12 +66,18 @@ function bindUniversitySearch() {
 }
 
 
-function configureStudentShell({ locked = true, label = 'My workspace' } = {}) {
+function configureStudentShell({ locked = true, label = 'My workspace', showNavigation = false } = {}) {
   document.body.classList.add('student-workspace');
   document.querySelector('#breadcrumb').textContent = label;
-  document.querySelector('#connection').textContent = 'Secure session';
+  
   const picker = document.querySelector('.viewing-as-picker');
   if (picker) picker.hidden = true;
+  document.querySelector('.student-top-brand').hidden = false;
+  document.querySelector('.student-top-nav').hidden = !showNavigation;
+  document.querySelector('.student-top-account').hidden = false;
+  const displayName = document.querySelector('#identity-name').textContent;
+  document.querySelector('#student-top-name').textContent = displayName;
+  document.querySelector('#student-top-avatar').textContent = displayName.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'Ι';
   document.querySelectorAll('.sidebar nav a').forEach(link => {
     const isHome = link.dataset.page === 'home';
     if (isHome) link.setAttribute('aria-current', 'page');
@@ -88,7 +94,8 @@ const firstName = name => String(name || 'there').trim().split(/\s+/)[0];
 const studentYear = value => classificationLabels[value] || 'Not selected';
 
 function onboarding(profile, signupMetadata = {}, editing = false) {
-  configureStudentShell({ label: editing ? 'Edit academic profile' : 'Complete your profile' });
+  configureStudentShell({ label: editing ? 'Edit academic profile' : 'Complete your profile', showNavigation: editing });
+  if (editing) bindStudentNavigation(profile, 'profile');
   const currentYear = new Date().getFullYear();
   const fromSignup = signupMetadata && typeof signupMetadata === 'object' ? signupMetadata : {};
   const university = profile.universityName || (typeof fromSignup.university_name === 'string' ? fromSignup.university_name : '');
@@ -195,65 +202,98 @@ function resumeControls(profile) {
   });
 }
 
+
+function bindStudentNavigation(profile, active = 'overview') {
+  document.querySelectorAll('[data-student-view]').forEach(button => {
+    const view = button.dataset.studentView;
+    if (view === active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+    button.onclick = () => {
+      if (view === 'profile') return onboarding(profile, {}, true);
+      studentHome(profile);
+      if (view === 'resume') document.querySelector('#studio-resume')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  });
+}
+
 function studentHome(profile) {
-  configureStudentShell({ label: 'Student dashboard' });
-  const university = profile.universityName || 'Not provided';
-  const studentClass = studentYear(profile.classification);
-  const major = profile.major || 'Not provided';
+  configureStudentShell({ label: 'Overview', showNavigation: true });
+  bindStudentNavigation(profile, 'overview');
   const name = firstName(profile.name);
-  const resumeName = profile.resume?.filename;
-  document.querySelector('#identity-detail').textContent = [studentClass, university].filter(Boolean).join(' · ');
-  document.querySelector('#content').innerHTML = `<div class="student-dashboard">
-    <section class="student-welcome">
-      <div class="welcome-content">
-        <span class="welcome-eyebrow">YOUR ITHACA WORKSPACE <span class="welcome-dot"></span> PROFILE ACTIVE</span>
-        <h1>Welcome to Ithaca, ${e(name)}.</h1>
-        <p>One home for your engineering journey. Build your record, connect with your team, and make your contributions count.</p>
-        <div class="welcome-actions"><button id="edit-profile" class="welcome-primary">Edit my profile <span aria-hidden="true">↗</span></button><span class="welcome-lock">Private student workspace</span></div>
+  const university = profile.universityName || 'University not provided';
+  const major = profile.major || 'Major not provided';
+  const classification = studentYear(profile.classification);
+  const resumeName = profile.resume?.filename || '';
+  document.querySelector('#identity-detail').textContent = [classification, university].join(' · ');
+  document.title = 'Your workspace · Ithaca';
+  document.querySelector('#content').innerHTML = `<div class="studio-dashboard">
+    <div class="studio-intro">
+      <div><span class="studio-eyebrow"><span class="studio-eyebrow-line"></span> PERSONAL WORKSPACE / OVERVIEW</span>
+        <h1>Make work that lasts<span class="studio-accent">.</span></h1>
+        <p>Welcome back, <strong>${e(name)}</strong>. Your engineering journey starts here.</p></div>
+      <button type="button" id="edit-profile" class="studio-edit"><span aria-hidden="true">✎</span> Edit student details</button>
+    </div>
+    <section class="studio-spotlight" aria-label="Your engineering identity">
+      <div class="studio-spotlight-copy">
+        <p class="studio-spotlight-kicker">YOUR ENGINEERING RECORD</p>
+        <h2>Every contribution<br>has a story.</h2>
+        <p>Your work, your team, and the evidence behind it — all in one place. Start with your student profile and build from there.</p>
+        <div class="studio-spotlight-bottom"><span>ITHACA / CHAPTER 01</span><span class="studio-spotlight-dash"></span><span>BEGIN YOUR LEGACY</span></div>
       </div>
-      <div class="welcome-art" aria-hidden="true"><div class="welcome-ring"><span>Ι</span></div><small>WHERE LEGACIES LIVE ON</small></div>
+      <div class="studio-id-card">
+        <div class="studio-card-top"><span><i aria-hidden="true">Ι</i> ITHACA</span><small>STUDENT RECORD</small></div>
+        <div class="studio-card-person"><small>PROFILE OF</small><strong>${e(profile.name)}</strong><span>${e(major)}</span></div>
+        <div class="studio-card-bottom"><div><small>UNIVERSITY</small><strong>${e(university)}</strong></div><div><small>CLASS OF</small><strong>${e(profile.graduationYear || '—')}</strong></div></div>
+      </div>
     </section>
-    <div class="dashboard-section-heading"><div><p class="dashboard-kicker">YOUR DETAILS</p><h2>Academic overview</h2></div><span class="dashboard-subtle">Information you control</span></div>
-    <div class="academic-grid">
-      <article class="academic-tile"><span class="academic-symbol">01</span><p>University</p><strong>${e(university)}</strong></article>
-      <article class="academic-tile"><span class="academic-symbol">02</span><p>Classification</p><strong>${e(studentClass)}</strong></article>
-      <article class="academic-tile"><span class="academic-symbol">03</span><p>Major</p><strong>${e(major)}</strong></article>
-      <article class="academic-tile"><span class="academic-symbol">04</span><p>Graduation</p><strong>Class of ${e(profile.graduationYear || '—')}</strong></article>
-    </div>
-    <div class="dashboard-columns">
-      <section class="student-panel next-panel">
-        <div class="student-panel-title"><div><p class="dashboard-kicker">GETTING STARTED</p><h2>Your next chapter</h2></div><span class="panel-step">02 / 03</span></div>
-        <ol class="journey-list">
-          <li class="journey-done"><span class="journey-icon">✓</span><div><strong>Academic profile completed</strong><p>Your university, major and graduation year are saved.</p></div></li>
-          <li class="${resumeName ? 'journey-done' : 'journey-next'}"><span class="journey-icon">${resumeName ? '✓' : '2'}</span><div><strong>${resumeName ? 'Resume saved' : 'Add your resume'}</strong><p>${resumeName ? 'Your file is stored privately in Ithaca.' : 'Optional, but useful to keep your experience together.'}</p></div></li>
-          <li class="journey-next"><span class="journey-icon">3</span><div><strong>Connect with an engineering club</strong><p>A club administrator must invite or assign you before project and recruitment features unlock.</p></div></li>
+
+    <div class="studio-section-label"><span>01 / AT A GLANCE</span><h2>Your academic identity</h2><p>Built from the details you provided.</p></div>
+    <section class="studio-facts" aria-label="Student academic profile">
+      <article><span class="studio-fact-icon" aria-hidden="true">⌂</span><span class="studio-fact-label">University</span><strong>${e(university)}</strong></article>
+      <article><span class="studio-fact-icon" aria-hidden="true">◫</span><span class="studio-fact-label">Classification</span><strong>${e(classification)}</strong></article>
+      <article><span class="studio-fact-icon" aria-hidden="true">◇</span><span class="studio-fact-label">Major</span><strong>${e(major)}</strong></article>
+      <article><span class="studio-fact-icon" aria-hidden="true">↗</span><span class="studio-fact-label">Graduation year</span><strong>${e(profile.graduationYear || '—')}</strong></article>
+    </section>
+
+    <div class="studio-section-label"><span>02 / BUILD YOUR RECORD</span><h2>Set yourself up for what's next</h2></div>
+    <div class="studio-main-grid">
+      <section class="studio-journey" aria-labelledby="studio-journey-title">
+        <div class="studio-panel-top"><div><span class="studio-panel-kicker">YOUR JOURNEY</span><h3 id="studio-journey-title">The road ahead</h3></div><span class="studio-progress">${resumeName ? '2 OF 3' : '1 OF 3'} STEPS</span></div>
+        <ol class="studio-steps">
+          <li class="done"><span class="studio-step-count">✓</span><div><strong>Build your student profile</strong><p>University, classification, major, and graduation year saved.</p></div><span class="studio-step-state">COMPLETE</span></li>
+          <li class="${resumeName ? 'done' : 'current'}"><span class="studio-step-count">${resumeName ? '✓' : '02'}</span><div><strong>Keep your resume on hand</strong><p>${resumeName ? 'Your latest resume is saved in your private vault.' : 'Add a PDF or DOCX whenever you are ready.'}</p></div><span class="studio-step-state">${resumeName ? 'COMPLETE' : 'OPTIONAL'}</span></li>
+          <li><span class="studio-step-count">03</span><div><strong>Join an engineering organization</strong><p>Your club administrator can grant access to projects, contributions, and recruiting tools.</p></div><span class="studio-step-state">PENDING</span></li>
         </ol>
-        <div class="member-access"><div><strong>Membership identifier</strong><p>Share this ID with your club administrator when joining.</p></div><button id="copy-member-id" class="student-button-quiet" type="button">Copy ID</button></div>
-        <p id="member-copy-status" class="student-feedback" role="status" aria-live="polite"></p>
+        <div class="studio-member">
+          <div><span class="studio-panel-kicker">YOUR MEMBERSHIP ID</span><code id="studio-member-id">${e(profile.internalMemberId)}</code><small>Share this with a club administrator to request access.</small></div>
+          <button id="copy-member-id" type="button">Copy ID <span aria-hidden="true">↗</span></button>
+        </div>
+        <p id="member-copy-status" class="studio-status" role="status" aria-live="polite"></p>
       </section>
-      <section class="student-panel resume-panel">
-        <div class="student-panel-title"><div><p class="dashboard-kicker">YOUR DOCUMENTS</p><h2>Resume vault</h2></div><span class="private-tag">PRIVATE</span></div>
-        <div class="resume-file-state"><span class="resume-file-icon">PDF</span><div><strong>${resumeName ? e(resumeName) : 'No resume uploaded yet'}</strong><p>${resumeName ? 'Stored securely · only your account can access this file' : 'Upload a PDF or DOCX to keep your resume in your Ithaca profile.'}</p></div></div>
-        <form id="resume-update-form" class="resume-vault-form">
-          <label for="resume-update">Upload ${resumeName ? 'a new version' : 'your resume'}</label>
+
+      <section class="studio-document-panel" id="studio-resume" aria-labelledby="studio-resume-title">
+        <div class="studio-panel-top"><div><span class="studio-panel-kicker">PERSONAL DOCUMENTS</span><h3 id="studio-resume-title">Resume studio</h3></div><span class="studio-private">PRIVATE</span></div>
+        <div class="studio-resume-preview"><div class="studio-file-emblem"><span>${resumeName && resumeName.toLowerCase().endsWith('.docx') ? 'DOC' : 'PDF'}</span></div><div><strong>${resumeName ? e(resumeName) : 'Your next opportunity starts here'}</strong><p>${resumeName ? 'Your file is securely stored and only accessible by you.' : 'Keep your most up-to-date resume in one secure place.'}</p></div></div>
+        <form id="resume-update-form" class="studio-upload-form">
+          <label for="resume-update">Choose ${resumeName ? 'a new version' : 'your resume'}</label>
           <input id="resume-update" name="resume" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
-          <p>PDF or DOCX · 2 MB max · not shared with clubs or recruiters</p>
-          <button type="submit" class="student-button-primary">Save resume <span aria-hidden="true">↑</span></button>
+          <small>PDF or DOCX · 2 MB max · Never publicly shared</small>
+          <button type="submit" class="studio-upload-button">${resumeName ? 'Replace resume' : 'Upload resume'} <span aria-hidden="true">↑</span></button>
         </form>
-        ${resumeName ? '<div class="resume-extra-actions"><button id="download-resume" type="button" class="student-button-quiet">Download</button><button id="remove-resume" type="button" class="student-button-quiet">Remove</button></div>' : ''}
-        <p id="resume-update-status" class="student-feedback" role="status" aria-live="polite"></p>
+        ${resumeName ? '<div class="studio-file-actions"><button id="download-resume" type="button">Download</button><button id="remove-resume" type="button">Remove file</button></div>' : ''}
+        <p id="resume-update-status" class="studio-status" role="status" aria-live="polite"></p>
       </section>
     </div>
-    <section class="dashboard-footnote"><span class="footnote-icon">i</span><p><strong>Your workspace will grow with your work.</strong> Athena, Kleos Ledger, The Court, and Bow unlock when you receive approved club access. Ithaca does not create fictional memberships or contribution data for your account.</p></section>
+    <div class="studio-access-note"><span aria-hidden="true">✳</span><p><strong>What's next?</strong> Athena, Kleos Ledger, The Court, and Bow become available after your club administrator grants you membership. Your account won't be filled with fictional projects or contribution data.</p></div>
   </div>`;
   document.querySelector('#edit-profile').addEventListener('click', () => onboarding(profile, {}, true));
   document.querySelector('#copy-member-id').addEventListener('click', async () => {
     const status = document.querySelector('#member-copy-status');
     try {
       await navigator.clipboard.writeText(profile.internalMemberId);
-      status.textContent = 'Membership ID copied.';
+      status.textContent = 'Member ID copied to clipboard.';
     } catch {
-      status.textContent = 'Your membership ID is ' + profile.internalMemberId;
+      status.textContent = `Member ID: ${profile.internalMemberId}`;
     }
   });
   resumeControls(profile);
@@ -274,7 +314,7 @@ try {
     } else {
       const picker = document.querySelector('.viewing-as-picker');
       if (picker) picker.hidden = true;
-      document.querySelector('#connection').textContent = 'Secure session';
+      
       const logout = document.querySelector('#logout');
       logout.hidden = false;
       logout.addEventListener('click', async () => { logout.disabled = true; await supabase.auth.signOut(); location.replace('/'); });
