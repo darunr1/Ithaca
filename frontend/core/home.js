@@ -1,12 +1,45 @@
 import { api } from '../shared/api.js';
-import { e, heading } from '../shared/ui.js';
+import { e } from '../shared/ui.js';
+
 export async function renderHome() {
-  const [{ data: allClubs }, { data: roster }, { data: sessions }, { data: rankings }, { data: drafts }] = await Promise.all([
-    api('/clubs'), api('/clubs/club-rocketry/roster'), api('/clubs/club-rocketry/sessions'), api('/clubs/club-rocketry/rankings?range=all'), api('/clubs/club-rocketry/drafts')
+  const [{ data: clubs }, { data: me }] = await Promise.all([api('/clubs'), api('/auth/me')]);
+  if (!clubs.length) return '<div class="module-empty">Your club access is being set up. Return to your student profile to create or join an organization.</div>';
+  const active = clubs[0];
+  const [{ data: stats }, { data: rankings }] = await Promise.all([
+    api(`/organizations/${encodeURIComponent(active.id)}/roster-stats`),
+    api(`/clubs/${encodeURIComponent(active.id)}/rankings?range=all`)
   ]);
-  const clubs = allClubs.filter(c => c.universityId === 'uni-aster');
-  return `${heading('YOUR CLUB’S CONTINUING VOYAGE', 'A home for the work that matters.', 'Record the contribution. Recognize the engineer. Carry the knowledge forward.')}
-    <section class="hero"><div><p class="eyebrow">ASTER ROCKETRY / FALL 2026</p><h2>Today’s work.<br>Tomorrow’s legacy.</h2><p>Behind every launch is a team worth remembering.<br>Make the engineering—and the people behind it—visible.</p><a href="#kleos" class="button light">Explore the ledger <span>↗</span></a></div><div class="orbit" aria-hidden="true"><div class="orbit-inner"><span>Ι</span><small>JOIN · CONTRIBUTE · LEAD</small></div><i></i></div><span class="hero-caption">PROJECT ARGOS · AVIONICS & FLIGHT SYSTEMS</span></section>
-    <section class="stats" aria-label="Club activity"><article><span>Active members</span><strong>${roster.length.toString().padStart(2, '0')}</strong><small>Aster Rocketry roster</small></article><article><span>Recorded sessions</span><strong>${sessions.length.toString().padStart(2, '0')}</strong><small>Four weeks of fictional history</small></article><article><span>Recognized activity</span><strong>${rankings.rows.reduce((sum, r) => sum + r.points, 0)}</strong><small>Contribution + attendance points</small></article><article><span>Awaiting review</span><strong>${drafts.filter(d => d.status === 'pending').length.toString().padStart(2, '0')}</strong><small>Drafts earn no points</small></article></section>
-    <div class="columns"><section class="panel"><div class="section-title"><h2>Your engineering community</h2><span class="muted">${clubs.length} clubs</span></div>${clubs.map((c, i) => `<div class="club-row"><span class="club-icon">${['↗', 'ϟ', '⌘'][i % 3]}</span><div><h3>${e(c.name)}</h3><p>${e(c.project)}</p></div><span class="tag">${e(c.category.split(' & ')[0])}</span></div>`).join('')}</section><section class="panel"><div class="section-title"><h2>The latest chapter</h2><span class="gold">04 / 04</span></div><p class="eyebrow">${e(sessions.at(-1)?.date || 'No sessions')}</p><h3>${e(sessions.at(-1)?.title || 'Create your first session')}</h3><p class="body-copy">Firmware validation, sensor calibration, and the records that help the next team build with confidence.</p><a class="text-link" href="#athena">Ask Athena about the project <span>→</span></a><div class="mini-note">Athena guides. Kleos records and approves contributions.</div></section></div>`;
+  const isOfficer = active.officerIds.includes(me.profile.internalMemberId);
+  const total = stats.members.reduce((sum, m) => sum + m.points, 0);
+  const count = stats.members.reduce((sum, m) => sum + m.contributions, 0);
+  const rows = stats.members.slice(0, 6).map((m, i) => `<div class="module-person-row"><span class="module-rank">${i+1}</span><span class="module-avatar">${e(m.name.split(' ').map(w=>w[0]).slice(0,2).join(''))}</span><div><strong>${e(m.name)}</strong><small>${e(m.major || 'Engineering member')}${m.officer ? ' · Officer' : ''}</small></div><span class="module-score">${m.points} pts</span></div>`).join('') || '<p class="module-empty">The member roster is currently empty.</p>';
+  return `<div class="module-page module-home">
+    <header class="module-hero"><div><span class="module-kicker">YOUR ENGINEERING ORGANIZATION</span><h1>${e(active.name)}</h1><p>${e(active.project || 'Your team’s contributions and engineering evidence live here.')}</p><span class="module-chip">${isOfficer ? 'Officer workspace' : 'Member workspace'} · Student-managed</span></div><div class="module-hero-symbol" aria-hidden="true">Ι</div></header>
+    <div class="module-heading"><div><span>OVERVIEW / REAL ACTIVITY</span><h2>Team at a glance</h2></div><p>Everything below comes from your real Atlas records.</p></div>
+    <div class="module-metrics"><article><span>Club members</span><strong>${stats.members.length}</strong><small>Current roster</small></article><article><span>Approved contributions</span><strong>${count}</strong><small>Recorded, officer-approved</small></article><article><span>Activity points</span><strong>${total}</strong><small>Contributions and attendance</small></article><article><span>Ranked members</span><strong>${rankings.rows.length}</strong><small>Members with activity</small></article></div>
+    <div class="module-two-col">
+      <section class="module-panel"><div class="module-panel-head"><div><span>PEOPLE</span><h2>Your team</h2></div><a href="#kleos">Open ledger →</a></div>${rows}</section>
+      <section class="module-panel"><div class="module-panel-head"><div><span>WORKSPACE TOOLS</span><h2>Continue your work</h2></div></div>
+        <div class="module-link-grid"><a href="#athena"><strong>Athena</strong><small>Ask Gemini about project documents with citations</small><span>↗</span></a><a href="#kleos"><strong>Kleos Ledger</strong><small>Member records, scores and contribution reviews</small><span>↗</span></a><a href="#court"><strong>The Court</strong><small>Club and university rankings</small><span>↗</span></a><a href="#bow"><strong>Bow</strong><small>Succession planning for club officers</small><span>↗</span></a></div>
+      </section>
+    </div>
+    ${isOfficer ? `<section class="module-panel module-invites"><div class="module-panel-head"><div><span>CLUB ADMINISTRATION</span><h2>Invite a new member</h2></div></div><p>Invite a verified student at the same university using their Ithaca member ID. They must accept before joining.</p><form id="invite-member-form" class="module-inline-form"><label for="invite-member-id" class="sr-only">Student member ID</label><input id="invite-member-id" name="memberId" placeholder="Paste the student's member ID" minlength="8" required><button type="submit">Send invitation</button></form><p id="invite-member-status" role="status"></p></section>` : ''}
+    <p class="module-disclaimer">Student-managed workspace. Rankings reflect recorded activity, not engineering ability. No demo people or invented contributions.</p>
+  </div>`;
+}
+export function bindHome(root) {
+  const form = root.querySelector('#invite-member-form');
+  form?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button');
+    const status = root.querySelector('#invite-member-status');
+    button.disabled = true;
+    status.textContent = 'Sending invitation…';
+    try {
+      const clubs = (await api('/clubs')).data;
+      await api(`/organizations/${encodeURIComponent(clubs[0].id)}/invitations`, { method: 'POST', body: Object.fromEntries(new FormData(form)) });
+      status.textContent = 'Invitation sent. The student must accept it from their dashboard.';
+      form.reset();
+    } catch (error) { status.textContent = error.message; } finally { button.disabled = false; }
+  });
 }
