@@ -284,7 +284,16 @@ function studentHome(profile) {
         <p id="resume-update-status" class="studio-status" role="status" aria-live="polite"></p>
       </section>
     </div>
-    <div class="studio-access-note"><span aria-hidden="true">✳</span><p><strong>What's next?</strong> Athena, Kleos Ledger, The Court, and Bow become available after your club administrator grants you membership. Your account won't be filled with fictional projects or contribution data.</p></div>
+    <section class="club-starter" aria-labelledby="club-starter-heading">
+      <div class="club-starter-heading"><span class="studio-panel-kicker">START OR JOIN A CLUB</span><h2 id="club-starter-heading">Unlock your engineering workspace</h2>
+      <p>Create a student-managed club or accept an invitation from an existing officer. Your club starts with real, empty records — never sample achievements.</p></div>
+      <div class="club-starter-grid"><form id="club-create-form" class="club-create-form">
+        <label for="new-club-name">Organization name</label><input id="new-club-name" name="name" maxlength="100" minlength="3" placeholder="e.g. UTD Robotics Design Team" required>
+        <label for="new-club-description">What does your team work on?</label><textarea id="new-club-description" name="description" maxlength="500" rows="3" placeholder="Describe the team's projects or mission"></textarea>
+        <button type="submit" class="studio-upload-button">Create club workspace <span aria-hidden="true">↗</span></button><p class="studio-status" id="club-create-status" role="status"></p>
+        <small>Student-managed · not verified or endorsed by the university</small>
+      </form><div class="club-invitations"><h3>Pending invitations</h3><div id="club-invitation-list" aria-live="polite"><p class="studio-muted">Checking invitations…</p></div><p class="studio-muted">Ask your club officer for an invitation using your member ID above.</p></div></div>
+    </section>
   </div>`;
   document.querySelector('#edit-profile').addEventListener('click', () => onboarding(profile, {}, true));
   document.querySelector('#copy-member-id').addEventListener('click', async () => {
@@ -297,6 +306,48 @@ function studentHome(profile) {
     }
   });
   resumeControls(profile);
+  bindClubStarter();
+}
+
+async function bindClubStarter() {
+  const form = document.querySelector('#club-create-form');
+  const invites = document.querySelector('#club-invitation-list');
+  form?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const submit = form.querySelector('button[type="submit"]');
+    const status = document.querySelector('#club-create-status');
+    submit.disabled = true;
+    status.textContent = 'Creating your student-managed club…';
+    try {
+      const body = Object.fromEntries(new FormData(form));
+      await api('/organizations', { method: 'POST', body });
+      location.replace('/dashboard#home');
+      location.reload();
+    } catch (error) {
+      status.textContent = error.message || 'Unable to create a club.';
+      submit.disabled = false;
+    }
+  });
+  try {
+    const { data: invitations } = await api('/organizations/invitations');
+    if (!invites?.isConnected) return;
+    invites.innerHTML = invitations.length ? invitations.map(item => `<article class="club-invitation" data-invitation="${e(item.id)}"><strong>${e(item.clubName)}</strong><div><button type="button" data-decision="accept">Join club</button><button type="button" data-decision="decline">Decline</button></div></article>`).join('') : '<p class="studio-muted">No invitations yet.</p>';
+    invites.querySelectorAll('[data-decision]').forEach(button => button.addEventListener('click', async () => {
+      const inviteId = button.closest('[data-invitation]')?.dataset.invitation;
+      const decision = button.dataset.decision;
+      button.disabled = true;
+      try {
+        await api(`/organizations/invitations/${encodeURIComponent(inviteId)}/respond`, { method: 'POST', body: { action: decision } });
+        if (decision === 'accept') location.reload();
+        else button.closest('.club-invitation')?.remove();
+      } catch (error) {
+        invites.insertAdjacentHTML('beforeend', `<p class="studio-status">${e(error.message)}</p>`);
+        button.disabled = false;
+      }
+    }));
+  } catch (error) {
+    if (invites) invites.textContent = 'Invitations could not be loaded: ' + error.message;
+  }
 }
 
 try {
@@ -325,7 +376,16 @@ try {
       document.querySelector('#identity-detail').textContent = [studentYear(profile.classification), profile.universityName].filter(Boolean).join(' · ');
       if (me.onboardingRequired) onboarding(profile, session.user?.user_metadata || {});
       else if (!profile.clubIds?.length) studentHome(profile);
-      else await import('./app.js');
+      else {
+        document.body.classList.add('student-workspace', 'club-workspace');
+        document.querySelector('.student-top-brand').hidden = false;
+        document.querySelector('.student-top-nav').hidden = true;
+        document.querySelector('.module-top-nav').hidden = false;
+        document.querySelector('.student-top-account').hidden = false;
+        document.querySelector('#student-top-name').textContent = profile.name;
+        document.querySelector('#student-top-avatar').textContent = profile.name.split(/\\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase();
+        await import('./app.js');
+      }
     }
   }
 } catch (error) {
