@@ -3,7 +3,7 @@ import { fail } from './errors.js';
 import { hash, pipelineProfile } from './chunking.js';
 import { validateVector } from './gemini.js';
 
-export const COLLECTIONS = { documents: 'atheneDocuments', chunks: 'atheneChunks', files: 'atheneFiles' };
+export const COLLECTIONS = { documents: 'atheneDocuments', chunks: 'atheneChunks', files: 'atheneFiles', insights: 'atheneInsights' };
 export function vectorDefinition(config) {
   return { fields: [
     { type: 'vector', path: 'embedding', numDimensions: config.EMBEDDING_DIMENSIONS, similarity: 'cosine' },
@@ -14,6 +14,9 @@ export async function setupAthene(db, config, createVector = false) {
   const names = new Set((await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name));
   for (const name of Object.values(COLLECTIONS)) if (!names.has(name)) await db.createCollection(name);
   const documents = db.collection(COLLECTIONS.documents); const chunks = db.collection(COLLECTIONS.chunks);
+  const insights = db.collection(COLLECTIONS.insights);
+  await insights.createIndex({ id: 1 }, { unique: true });
+  await insights.createIndex({ projectId: 1, createdAt: -1 });
   await documents.createIndex({ id: 1 }, { unique: true });
   await documents.createIndex({ projectId: 1, contentHash: 1 }, { unique: true });
   await documents.createIndex({ projectId: 1, uploadedAt: -1 });
@@ -34,7 +37,7 @@ export function checkIndex(index, config, requireReady = true) {
 }
 
 export function createAtheneRepository(db, config) {
-  const documents = db.collection(COLLECTIONS.documents); const chunks = db.collection(COLLECTIONS.chunks); const files = db.collection(COLLECTIONS.files);
+  const documents = db.collection(COLLECTIONS.documents); const chunks = db.collection(COLLECTIONS.chunks); const files = db.collection(COLLECTIONS.files); const insights = db.collection(COLLECTIONS.insights);
   const options = { maxTimeMS: 10000, timeoutMS: 15000 };
   async function database(call) {
     try { return await call(); }
@@ -68,6 +71,17 @@ export function createAtheneRepository(db, config) {
       if (result.matchedCount !== 1) throw fail(409, 'PROCESSING_LEASE_LOST', 'Document processing lease expired; retry the document.');
     }); },
     markFailed(record, error) { return database(() => documents.updateOne({ projectId: record.projectId, id: record.id, leaseId: record.leaseId }, { $set: { status: 'failed', error, failedAt: new Date().toISOString() }, $unset: { leaseId: '', leaseUntil: '' } }, options)); },
+    saveInsight(report) { return database(() => insights.insertOne(report, options)); },
+    listInsights(projectId) { return database(() => insights.find({ projectId }, { ...options, projection: { _id: 0 } }).sort({ createdAt: -1 }).limit(20).toArray()); },
+    async reviewInsight(projectId, reportId, actorId, status, reviewNote) {
+      return database(async () => {
+        const result = await insights.findOneAndUpdate({ projectId, id: reportId },
+          { $set: { status, reviewNote, reviewedBy: actorId, reviewedAt: new Date().toISOString() } },
+          { ...options, returnDocument: 'after', projection: { _id: 0 } });
+        if (!result) throw fail(404, 'INSIGHT_NOT_FOUND', 'Insight not found in your club.');
+        return result;
+      });
+    },
     async search(projectId, vector) {
       validateVector(vector, config.EMBEDDING_DIMENSIONS);
       return database(async () => {
