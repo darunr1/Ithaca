@@ -6,11 +6,15 @@ const reference = { clubId: string, memberId: string, sessionId: string, date: {
 export const definitions = {
   universities: schema(['name', 'timezone', 'semesterStart'], { name: string, state: string, timezone: string, semesterStart: string }),
   clubs: schema(['name', 'universityId', 'officerIds'], { name: string, universityId: string, officerIds: strings }),
-  members: schema(['name', 'universityId', 'clubIds', 'visibleToCompanies', 'openToNewClubs'], { name: string, email: string, supabaseUserId: string, universityId: string, major: string, graduationYear: { bsonType: ['int', 'long'] }, year: { bsonType: ['int', 'long'] }, clubIds: strings, visibleToCompanies: boolean, openToNewClubs: boolean, skills: strings, createdAt: string, updatedAt: string }),
+  members: schema(['name', 'universityId', 'clubIds', 'visibleToCompanies', 'openToNewClubs'], { name: string, email: string, supabaseUserId: string, universityId: string, major: string, graduationYear: { bsonType: ['int', 'long'] }, universityName: string, classification: { enum: ['freshman', 'sophomore', 'junior', 'senior', 'graduate'] }, year: { bsonType: ['int', 'long'] }, clubIds: strings, visibleToCompanies: boolean, openToNewClubs: boolean, skills: strings, createdAt: string, updatedAt: string }),
   userProfiles: schema(['internalMemberId', 'authProvider', 'authProviderUserId', 'name', 'email', 'clubIds', 'role', 'visibleToCompanies', 'openToNewClubs', 'onboarded', 'createdAt', 'updatedAt'], {
     internalMemberId: string, authProvider: { enum: ['supabase'] }, authProviderUserId: string, name: string, email: string,
-    universityId: { bsonType: ['string', 'null'] }, major: { bsonType: ['string', 'null'] }, graduationYear: { bsonType: ['int', 'long', 'null'] }, clubIds: strings,
+    universityId: { bsonType: ['string', 'null'] }, universityName: { bsonType: ['string', 'null'] }, classification: { enum: ['freshman', 'sophomore', 'junior', 'senior', 'graduate', null] }, major: { bsonType: ['string', 'null'] }, graduationYear: { bsonType: ['int', 'long', 'null'] },
+    resume: { bsonType: ['object', 'null'], properties: { filename: string, contentType: string, size: { bsonType: ['int', 'long'] }, uploadedAt: string } }, clubIds: strings,
     role: { enum: ['member'] }, visibleToCompanies: boolean, openToNewClubs: boolean, onboarded: boolean, createdAt: string, updatedAt: string
+  }),
+  resumeFiles: schema(['authProviderUserId', 'filename', 'contentType', 'size', 'uploadedAt', 'content'], {
+    authProviderUserId: string, filename: string, contentType: string, size: { bsonType: ['int', 'long'] }, uploadedAt: string, content: { bsonType: 'binData' }
   }),
   sessions: schema(['clubId', 'date', 'week', 'title', 'takenBy'], { ...reference, title: string, takenBy: string }),
   attendance: schema(['clubId', 'memberId', 'sessionId', 'date', 'week', 'points', 'recordedBy'], { ...reference, points: { enum: [10] }, recordedBy: string }),
@@ -29,6 +33,7 @@ export const definitions = {
 export const indexes = {
   clubs: [{ key: { universityId: 1 } }], members: [{ key: { clubIds: 1 } }, { key: { visibleToCompanies: 1 } }, { key: { supabaseUserId: 1 }, unique: true, sparse: true }],
   userProfiles: [{ key: { authProvider: 1, authProviderUserId: 1 }, unique: true }, { key: { internalMemberId: 1 }, unique: true }, { key: { email: 1 } }],
+  resumeFiles: [{ key: { authProviderUserId: 1 }, unique: true }],
   sessions: [{ key: { clubId: 1, date: -1 } }],
   attendance: [{ key: { sessionId: 1, memberId: 1 }, unique: true }, { key: { clubId: 1, week: 1 } }],
   contributions: [{ key: { clubId: 1, date: -1, status: 1 } }, { key: { clubId: 1, week: 1 } }, { key: { universityId: 1, week: 1 } }, { key: { memberId: 1, date: -1 } }],

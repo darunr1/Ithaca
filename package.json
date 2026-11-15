@@ -19,7 +19,8 @@
     "athene:samples": "node scripts/athene-samples.js",
     "athene:demo": "node scripts/athene-demo.js",
     "test:athene": "node --test tests/athene.test.js",
-    "test:athene:integration": "node --test tests/athene.integration.test.js"
+    "test:athene:integration": "node --test tests/athene.integration.test.js",
+    "build": "npm run check && npm test"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",

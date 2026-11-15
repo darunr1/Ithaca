@@ -1,15 +1,46 @@
 import { createHash } from 'node:crypto';
+import multer from 'multer';
+import { normalize } from '../services/colleges.js';
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
+const MAX_RESUME_BYTES = 2 * 1024 * 1024;
+const CLASS_YEARS = Object.freeze({ freshman: 1, sophomore: 2, junior: 3, senior: 4, graduate: 5 });
 const onboarding = z.object({
-  universityId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/),
+  universityName: z.string().trim().min(2).max(160),
+  classification: z.enum(Object.keys(CLASS_YEARS)),
   major: z.string().trim().min(2).max(120),
   graduationYear: z.coerce.number().int().min(new Date().getUTCFullYear()).max(new Date().getUTCFullYear() + 12)
 }).strict();
+
+const parseResume = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RESUME_BYTES, files: 1, fields: 0 }
+}).single('resume');
+
+function resumeUpload(req, res, next) {
+  parseResume(req, res, error => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return next(fail(413, 'RESUME_TOO_LARGE', 'Resumes must be 2 MB or smaller.'));
+    next(fail(400, 'RESUME_UPLOAD_INVALID', 'Upload a single PDF or DOCX resume.'));
+  });
+}
+
+function inspectResume(file) {
+  if (!file || !file.buffer?.length) throw fail(400, 'RESUME_REQUIRED', 'Select a PDF or DOCX resume.');
+  const originalName = String(file.originalname || '').split(/[\\/]/).pop().replace(/[\x00-\x1f\x7f]/g, '').trim();
+  if (!originalName || originalName.length > 140) throw fail(400, 'RESUME_FILENAME_INVALID', 'Use a filename shorter than 140 characters.');
+  const ext = originalName.split('.').pop().toLowerCase();
+  const isPdf = ext === 'pdf' && file.mimetype === 'application/pdf' && file.buffer.subarray(0, 5).toString() === '%PDF-';
+  const isDocx = ext === 'docx' &&
+    ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/octet-stream'].includes(file.mimetype) &&
+    file.buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  if (!isPdf && !isDocx) throw fail(415, 'RESUME_TYPE_UNSUPPORTED', 'Only valid PDF or DOCX files can be uploaded.');
+  return { filename: originalName, contentType: isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: file.size, uploadedAt: new Date().toISOString() };
+}
 
 function bearer(req) {
   const match = /^Bearer ([^\s]+)$/.exec(req.get('Authorization') || '');
@@ -83,6 +114,9 @@ export async function provisionSupabaseProfile(db, identity) {
     universityId: null,
     major: null,
     graduationYear: null,
+    universityName: null,
+    classification: null,
+    resume: null,
     clubIds: [],
     role: 'member',
     visibleToCompanies: false,
@@ -130,7 +164,9 @@ export function supabaseIdentity({ config, db, verify, requireOnboarding = true 
           clubIds: member.clubIds || [],
           universityId: member.universityId,
           major: member.major,
-          graduationYear: member.graduationYear ?? profile.graduationYear
+          graduationYear: member.graduationYear ?? profile.graduationYear,
+          universityName: member.universityName ?? profile.universityName,
+          classification: member.classification ?? profile.classification
         };
       }
       if (requireOnboarding && !profile.onboarded) throw fail(403, 'ONBOARDING_REQUIRED', 'Complete your Ithaca profile before opening the workspace.');
@@ -141,7 +177,7 @@ export function supabaseIdentity({ config, db, verify, requireOnboarding = true 
   };
 }
 
-export function authRoutes({ config, db, verify }) {
+export function authRoutes({ config, db, verify, directory }) {
   const router = Router();
   router.get('/config', (req, res) => res.json({
     data: {
@@ -156,32 +192,81 @@ export function authRoutes({ config, db, verify }) {
   }
   router.use(supabaseIdentity({ config, db, verify, requireOnboarding: false }));
   router.get('/me', (req, res) => res.json({ data: { profile: req.authProfile, onboardingRequired: !req.authProfile?.onboarded }, meta: { authentication: 'supabase' } }));
-  router.get('/onboarding-options', async (req, res) => res.json({ data: { universities: await db.collection('universities').find({}, { projection: { _id: 0, id: 1, name: 1, state: 1 } }).sort({ name: 1 }).toArray() } }));
+  router.get('/university-search', async (req, res) => {
+    const query = String(req.query.q || '').trim().slice(0, 80);
+    if (query.length < 2) return res.json({ data: { universities: [] } });
+    const registered = await db.collection('universities').find({}, { projection: { _id: 0, id: 1, name: 1 } }).toArray();
+    res.json({ data: { universities: directory.search(query, { registered, limit: 10 }) } });
+  });
+
+  // Resumes are private and scoped to the verified Supabase identity, never to a client-provided member ID.
+  router.post('/resume', resumeUpload, async (req, res) => {
+    const resume = inspectResume(req.file);
+    const ownerId = req.authProfile.authProviderUserId;
+    await db.collection('resumeFiles').updateOne(
+      { id: `resume-${ownerId}` },
+      { $set: { id: `resume-${ownerId}`, authProviderUserId: ownerId, ...resume, content: req.file.buffer } },
+      { upsert: true }
+    );
+    await db.collection('userProfiles').updateOne(
+      { authProvider: 'supabase', authProviderUserId: ownerId },
+      { $set: { resume, updatedAt: new Date().toISOString() } }
+    );
+    res.json({ data: { resume } });
+  });
+  router.get('/resume', async (req, res) => {
+    const item = await db.collection('resumeFiles').findOne({ id: `resume-${req.authProfile.authProviderUserId}` });
+    if (!item) throw fail(404, 'RESUME_NOT_FOUND', 'No resume has been uploaded.');
+    // Copy only the declared byte range: Buffer.from(view.buffer) can expose pooled memory outside the file.
+    const binary = item.content?.buffer instanceof Uint8Array ? item.content.buffer : item.content;
+    if (!(binary instanceof Uint8Array)) throw fail(500, 'RESUME_STORAGE_INVALID', 'Saved resume data is unavailable.');
+    const buffer = Buffer.from(binary);
+    res.set('Content-Type', item.contentType);
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Content-Disposition', `attachment; filename="resume.${item.contentType === 'application/pdf' ? 'pdf' : 'docx'}"; filename*=UTF-8''${encodeURIComponent(item.filename)}`);
+    res.send(buffer);
+  });
+  router.delete('/resume', async (req, res) => {
+    const ownerId = req.authProfile.authProviderUserId;
+    await db.collection('resumeFiles').deleteOne({ id: `resume-${ownerId}` });
+    await db.collection('userProfiles').updateOne(
+      { authProvider: 'supabase', authProviderUserId: ownerId },
+      { $set: { resume: null, updatedAt: new Date().toISOString() } }
+    );
+    res.json({ data: { resume: null } });
+  });
+
   router.post('/onboarding', async (req, res) => {
     if (req.authProfile.onboarded) return res.json({ data: { profile: req.authProfile } });
     const input = onboarding.parse(req.body);
-    const university = await db.collection('universities').findOne({ id: input.universityId }, { projection: { _id: 0, id: 1 } });
-    if (!university) throw fail(400, 'UNKNOWN_UNIVERSITY', 'Choose a registered Ithaca university.');
+    const registered = await db.collection('universities').findOne({ name: input.universityName }, { projection: { _id: 0, id: 1, name: 1 } });
+    const match = directory.search(input.universityName, { limit: 10 }).find(item => normalize(item.name) === normalize(input.universityName));
+    const universityName = registered?.name || match?.name || input.universityName;
+    const universityId = registered?.id || match?.id || `self-${createHash('sha256').update(normalize(universityName)).digest('hex').slice(0, 24)}`;
+    const now = new Date().toISOString();
     const member = {
       id: req.authProfile.internalMemberId,
       supabaseUserId: req.authProfile.authProviderUserId,
       name: req.authProfile.name,
       email: req.authProfile.email,
-      universityId: university.id,
+      universityId,
+      universityName,
+      classification: input.classification,
       major: input.major,
       graduationYear: input.graduationYear,
-      year: 1,
+      year: CLASS_YEARS[input.classification],
       clubIds: [],
       skills: [],
       visibleToCompanies: false,
       openToNewClubs: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     };
     await db.collection('members').updateOne({ id: member.id }, { $setOnInsert: member }, { upsert: true });
     await db.collection('userProfiles').updateOne(
       { authProvider: 'supabase', authProviderUserId: req.authProfile.authProviderUserId },
-      { $set: { universityId: university.id, major: input.major, graduationYear: input.graduationYear, onboarded: true, updatedAt: new Date().toISOString() } }
+      { $set: { universityId, universityName, classification: input.classification, major: input.major, graduationYear: input.graduationYear, onboarded: true, updatedAt: now } }
     );
     const profile = await db.collection('userProfiles').findOne({ authProvider: 'supabase', authProviderUserId: req.authProfile.authProviderUserId }, { projection: { _id: 0 } });
     res.json({ data: { profile } });
