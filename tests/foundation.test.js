@@ -412,11 +412,11 @@ test('Atlas failures propagate instead of returning fixtures', async t => {
   const result = await fetch(base + '/api/clubs');
   assert.equal(result.status, 500); assert.ok(!('data' in await result.json()));
 });
-test('setup creates all 13 collections including private resumes and attendance duplicate guard', async () => {
+test('setup creates all 15 collections including club invitations and succession roles', async () => {
   const created = [], installed = [];
   const db = { listCollections: () => ({ toArray: async () => [] }), createCollection: async (name, options) => created.push({ name, options }), collection: name => ({ createIndex: async (key, options) => installed.push({ name, key, options }) }) };
   await setupCollections(db);
-  assert.equal(created.length, 13);
+  assert.equal(created.length, 15);
   assert.ok(created.every(c => c.options.validationAction === 'error'));
   assert.ok(installed.some(i => i.name === 'attendance' && i.key.sessionId && i.key.memberId && i.options.unique));
 });
