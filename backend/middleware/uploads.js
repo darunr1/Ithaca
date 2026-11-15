@@ -1,6 +1,7 @@
 import multer from 'multer';
-import { PDFParse } from 'pdf-parse';
 import { httpError } from '../services/workspace.js';
+// pdf-parse (pdfjs-dist) is imported lazily: at load time it needs DOM polyfills from the optional native
+// @napi-rs/canvas package, which serverless bundles (Vercel) omit; a top-level import crashed every API route.
 // Prepared for Darun's draft route. No upload endpoint is enabled yet.
 export const notesUpload = multer({
   storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 3 },
@@ -13,6 +14,7 @@ export async function extractNotes(file) {
   let text;
   if (file.mimetype === 'application/pdf') {
     if (file.buffer.subarray(0, 5).toString() !== '%PDF-') throw httpError(400, 'INVALID_PDF', 'Invalid PDF signature.');
+    const { PDFParse } = await import('pdf-parse');
     const parser = new PDFParse({ data: file.buffer });
     try { text = (await parser.getText()).text; } finally { await parser.destroy(); }
   } else text = file.buffer.toString('utf8');
