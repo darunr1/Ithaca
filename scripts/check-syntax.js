@@ -10,5 +10,5 @@ async function check(directory) {
     }
   }
 }
-for (const directory of ['backend', 'ai-service', 'database', 'scripts', 'tests']) await check(directory);
-if (!process.exitCode) console.log('All backend, script and test JavaScript syntax checks passed.');
+for (const directory of ['backend', 'ai-service', 'database', 'frontend', 'scripts', 'tests']) await check(directory);
+if (!process.exitCode) console.log('All backend, frontend, script and test JavaScript syntax checks passed.');
