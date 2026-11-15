@@ -217,7 +217,10 @@ export function authRoutes({ config, db, verify, directory }) {
   router.get('/resume', async (req, res) => {
     const item = await db.collection('resumeFiles').findOne({ id: `resume-${req.authProfile.authProviderUserId}` });
     if (!item) throw fail(404, 'RESUME_NOT_FOUND', 'No resume has been uploaded.');
-    const buffer = Buffer.isBuffer(item.content) ? item.content : Buffer.from(item.content.buffer ?? item.content);
+    // Copy only the declared byte range: Buffer.from(view.buffer) can expose pooled memory outside the file.
+    const binary = item.content?.buffer instanceof Uint8Array ? item.content.buffer : item.content;
+    if (!(binary instanceof Uint8Array)) throw fail(500, 'RESUME_STORAGE_INVALID', 'Saved resume data is unavailable.');
+    const buffer = Buffer.from(binary);
     res.set('Content-Type', item.contentType);
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Cache-Control', 'private, no-store');
