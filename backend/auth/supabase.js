@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import multer from 'multer';
 import { normalize } from '../services/colleges.js';
+import { extractFile } from '../athene/extraction.js';
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -188,7 +189,21 @@ export function supabaseIdentity({ config, db, verify, requireOnboarding = true 
   };
 }
 
-export function authRoutes({ config, db, verify, directory }) {
+// Reads the resume text and asks Gemini for the skills written in it. Never throws: the resume
+// itself is already saved, so a parsing or AI problem only means the skills stay as they were.
+async function resumeSkills(ai, file, resume) {
+  if (!ai?.extractResumeSkills) return { status: 'unavailable', skills: null };
+  try {
+    const { sections } = await extractFile({ buffer: file.buffer, originalname: resume.filename, mimetype: resume.contentType });
+    const result = await ai.extractResumeSkills({ text: sections.map(section => section.text).join('\n') });
+    if (result.origin !== 'gemini') return { status: 'unavailable', skills: null };
+    return { status: 'updated', skills: result.skills };
+  } catch {
+    return { status: 'failed', skills: null };
+  }
+}
+
+export function authRoutes({ config, db, verify, directory, ai = null }) {
   const router = Router();
   router.get('/config', (req, res) => res.json({
     data: {
@@ -226,7 +241,17 @@ export function authRoutes({ config, db, verify, directory }) {
       { authProvider: 'supabase', authProviderUserId: ownerId },
       { $set: { resume, updatedAt: new Date().toISOString() } }
     );
-    res.json({ data: { resume } });
+    // A new resume replaces the profile's skills with the ones Gemini finds in it.
+    const { status, skills } = await resumeSkills(ai, req.file, resume);
+    if (skills) {
+      const now = new Date().toISOString();
+      await db.collection('userProfiles').updateOne(
+        { authProvider: 'supabase', authProviderUserId: ownerId },
+        { $set: { skills, skillsSource: { filename: resume.filename, extractedAt: now }, updatedAt: now } }
+      );
+      await db.collection('members').updateOne({ id: req.authProfile.internalMemberId }, { $set: { skills, updatedAt: now } });
+    }
+    res.json({ data: { resume, skills, skillsStatus: status } });
   });
   router.get('/resume', async (req, res) => {
     const item = await db.collection('resumeFiles').findOne({ id: `resume-${req.authProfile.authProviderUserId}` });
@@ -273,7 +298,7 @@ export function authRoutes({ config, db, verify, directory }) {
       { $setOnInsert: {
         id: memberId, supabaseUserId: current.authProviderUserId,
         name: current.name, email: current.email, ...academic,
-        year: CLASS_YEARS[input.classification], clubIds: [], skills: [],
+        year: CLASS_YEARS[input.classification], clubIds: [], skills: Array.isArray(current.skills) ? current.skills : [],
         visibleToCompanies: false, openToNewClubs: false,
         createdAt: now, updatedAt: now
       } },

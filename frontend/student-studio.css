@@ -148,6 +148,11 @@ body.student-workspace .studio-edit:hover{background:#eef0ff;color:#4053b0;trans
 }
 .studio-fact-icon{display:grid;place-items:center;width:34px;height:34px;font-size:19px;color:#6477db;border-radius:10px;background:#eff1ff;margin-bottom:17px}
 .studio-fact-label{color:#8791a2;font-size:11px;margin-bottom:7px}
+.studio-skills{margin-top:13px;padding:22px 20px;background:#fff;border:1px solid var(--studio-hairline);border-radius:16px;box-shadow:0 5px 22px -20px #17243a52}
+.studio-skills .studio-panel-top{margin-bottom:14px}
+.studio-skill-list{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;padding:0;list-style:none}
+.studio-skill-list li{padding:6px 12px;border-radius:999px;background:#eff1ff;color:#3e4f9e;font-size:13px;line-height:1.3}
+.studio-skills small{color:#8791a2;font-size:12px}
 .studio-facts strong{font-size:14px;line-height:1.4;color:#253550;overflow-wrap:anywhere}
 .studio-main-grid{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);gap:19px;align-items:stretch}
 .studio-journey,.studio-document-panel{

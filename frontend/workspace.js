@@ -20,8 +20,14 @@ async function uploadResume(file) {
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error?.message || 'Resume upload failed.');
-  return payload.data.resume;
+  return payload.data;
 }
+
+const skillsMessages = {
+  updated: skills => skills.length ? `Resume saved. Your profile now lists ${skills.length} skill${skills.length === 1 ? '' : 's'} from it.` : 'Resume saved. No specific skills were found in it.',
+  failed: () => 'Resume saved, but its skills could not be read. Try uploading it again, or use a text-based PDF or DOCX.',
+  unavailable: () => 'Resume saved. Reading skills from resumes is not switched on here.'
+};
 
 async function downloadResume() {
   const token = await getAccessToken();
@@ -156,7 +162,7 @@ function onboarding(profile, signupMetadata = {}, editing = false) {
       const details = Object.fromEntries(new FormData(form));
       delete details.resume;
       if (resume) {
-        feedback.textContent = 'Uploading your resume securely…';
+        feedback.textContent = 'Uploading your resume and reading your skills…';
         await uploadResume(resume);
       }
       feedback.textContent = 'Saving your university and academic details…';
@@ -191,10 +197,13 @@ function resumeControls(profile) {
     const button = form.querySelector('button[type="submit"]');
     const status = document.querySelector('#resume-update-status');
     button.disabled = true;
-    status.textContent = 'Uploading your resume securely…';
+    status.textContent = 'Uploading your resume and reading your skills…';
     try {
-      await uploadResume(document.querySelector('#resume-update').files[0]);
-      location.reload();
+      const result = await uploadResume(document.querySelector('#resume-update').files[0]);
+      const { data } = await api('/auth/me');
+      studentHome(data.profile);
+      const message = (skillsMessages[result.skillsStatus] || skillsMessages.unavailable)(result.skills || []);
+      document.querySelector('#resume-update-status').textContent = message;
     } catch (error) {
       status.textContent = error.message || 'Upload failed. Try again.';
       button.disabled = false;
@@ -224,6 +233,7 @@ function studentHome(profile) {
   const major = profile.major || 'Major not provided';
   const classification = studentYear(profile.classification);
   const resumeName = profile.resume?.filename || '';
+  const skills = Array.isArray(profile.skills) ? profile.skills : [];
   const hasClub = Boolean(profile.clubIds?.length);
   document.querySelector('#identity-detail').textContent = [classification, university].join(' · ');
   document.title = 'Your workspace · Ithaca';
@@ -254,6 +264,12 @@ function studentHome(profile) {
       <article><span class="studio-fact-icon" aria-hidden="true">◫</span><span class="studio-fact-label">Classification</span><strong>${e(classification)}</strong></article>
       <article><span class="studio-fact-icon" aria-hidden="true">◇</span><span class="studio-fact-label">Major</span><strong>${e(major)}</strong></article>
       <article><span class="studio-fact-icon" aria-hidden="true">↗</span><span class="studio-fact-label">Graduation year</span><strong>${e(profile.graduationYear || '—')}</strong></article>
+    </section>
+    <section class="studio-skills" aria-labelledby="studio-skills-title">
+      <div class="studio-panel-top"><div><span class="studio-panel-kicker">FROM YOUR RESUME</span><h3 id="studio-skills-title">Skills</h3></div>${skills.length ? `<span class="studio-private">${skills.length} SKILL${skills.length === 1 ? '' : 'S'}</span>` : ''}</div>
+      ${skills.length
+        ? `<ul class="studio-skill-list">${skills.map(skill => `<li>${e(skill)}</li>`).join('')}</ul><small>Read by Gemini from ${e(profile.skillsSource?.filename || 'your resume')}. Upload a new resume to refresh this list.</small>`
+        : `<p class="studio-muted">${resumeName ? 'No skills have been read from your resume yet. Upload it again to update this list.' : 'Upload your resume below and your skills will be filled in automatically.'}</p>`}
     </section>
 
     <div class="studio-section-label"><span>02 / BUILD YOUR RECORD</span><h2>Set yourself up for what's next</h2></div>
@@ -352,6 +368,7 @@ async function bindClubStarter() {
   }
 }
 
+let redirecting = false;
 try {
   const supabase = await loadSupabase();
   if (!supabase) {
@@ -363,6 +380,7 @@ try {
   } else {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
+      redirecting = true;
       location.replace(`/login?redirect=${encodeURIComponent(location.href)}`);
     } else {
       const picker = document.querySelector('.viewing-as-picker');
@@ -392,4 +410,8 @@ try {
   }
 } catch (error) {
   document.querySelector('#content').innerHTML = `<div class="notice" role="alert">${e(error.message)}</div><p><a class="button" href="/login">Return to login</a></p>`;
+} finally {
+  // app.html starts hidden so the old layout never flashes; reveal once the right layout is in place.
+  // When redirecting to the login page, stay hidden until the browser leaves.
+  if (!redirecting) document.body.classList.remove('booting');
 }

@@ -13,7 +13,10 @@ import { createCatalog } from './services/catalog.js';
 import { athenaSessionRoutes } from './athene/session.js';
 import { authRoutes, supabaseIdentity } from './auth/supabase.js';
 import { fail } from './athene/errors.js';
-export function createApp({ config, db = null, athene = {}, authentication = {} }) {
+import { createGeminiService } from '../ai-service/gemini.js';
+export function createApp({ config, db = null, athene = {}, authentication = {}, ai }) {
+  // Resume skills use Gemini when it is configured; without a key the feature is simply off.
+  if (ai === undefined) ai = config.AI_MODE === 'live' && !config.GEMINI_API_KEY ? null : createGeminiService(config);
   if (config.DATA_MODE === 'atlas' && !db) throw new Error('Atlas mode requires a connected database.');
   const app = express();
   const frontend = fileURLToPath(new URL('../frontend', import.meta.url));
@@ -29,7 +32,7 @@ export function createApp({ config, db = null, athene = {}, authentication = {} 
       send(res, { status: 'ok', database: db ? 'connected' : 'disabled', ai: config.AI_MODE, authentication: config.AUTH_MODE === 'supabase' ? 'supabase' : 'fictional-demo' });
     } catch { next(Object.assign(new Error('Database unavailable; no fallback was used.'), { status: 503, code: 'DATABASE_UNAVAILABLE' })); }
   });
-  app.use('/api/auth', authRoutes({ config, db, verify: authentication.verify, directory: collegeDirectory }));
+  app.use('/api/auth', authRoutes({ config, db, verify: authentication.verify, directory: collegeDirectory, ai }));
   app.post('/api/athena-dev-session', (req, res, next) => {
     const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
     if (!config.ATHENE_ENABLED || !config.ATHENE_DEV_TOKEN || config.NODE_ENV === 'production' || !local) return next(Object.assign(new Error('Development session is unavailable.'), { status: 404, code: 'NOT_FOUND' }));

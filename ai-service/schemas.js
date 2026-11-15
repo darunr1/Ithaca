@@ -7,8 +7,23 @@ export const extractionSchema = z.object({ drafts: z.array(z.object({
 export const fitSchema = z.object({ candidateId: z.string(), strengths: z.array(z.object({
   explanation: z.string().min(1), evidenceId: z.string().min(1), sourceExcerpt: z.string().min(1)
 }).strict()).max(10), gaps: z.array(z.string()), reviewRequired: z.literal(true) }).strict();
+export const resumeSkillsSchema = z.object({ skills: z.array(z.string().trim().min(1).max(60)).max(60) }).strict();
 export const extractionJsonSchema = z.toJSONSchema(extractionSchema);
 export const fitJsonSchema = z.toJSONSchema(fitSchema);
+export const resumeSkillsJsonSchema = z.toJSONSchema(resumeSkillsSchema);
+const squash = text => text.toLowerCase().replace(/[^a-z0-9+#]+/g, '');
+// Keep only skills actually written in the resume (ignoring case, spacing and punctuation), without duplicates.
+export function validateResumeSkills(output, { text }) {
+  const resume = squash(text);
+  const seen = new Set();
+  const skills = resumeSkillsSchema.parse(output).skills.filter(skill => {
+    const key = squash(skill);
+    if (!key || seen.has(key) || !resume.includes(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 40);
+  return { skills };
+}
 export function validateExtraction(output, { notes, roster }) {
   const result = extractionSchema.parse(output);
   for (const draft of result.drafts) {

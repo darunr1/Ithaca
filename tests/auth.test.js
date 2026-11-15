@@ -4,6 +4,8 @@ import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createApp } from '../backend/app.js';
 import { readConfig } from '../backend/config.js';
 import { createSupabaseVerifier, provisionSupabaseProfile } from '../backend/auth/supabase.js';
+import { validateResumeSkills } from '../ai-service/schemas.js';
+import { strToU8, zipSync } from 'fflate';
 
 function database() {
   const data = new Map([['universities', new Map([['uni-a', { id: 'uni-a', name: 'A University', state: 'TX', timezone: 'America/Chicago', semesterStart: '2026-08-24' }]])], ['clubs', new Map()], ['members', new Map()], ['userProfiles', new Map()], ['resumeFiles', new Map()]]);
@@ -155,4 +157,53 @@ test('Supabase protects APIs, provisions onboarding, and never trusts client rol
   });
   assert.equal(transfer.status, 409);
   assert.equal(savedMember.universityId, 'uni-a');
+});
+
+test('uploading a resume fills the profile skills from Gemini, and a failed read keeps the upload', async t => {
+  const db = database();
+  const config = readConfig({ AUTH_MODE: 'supabase', SUPABASE_URL: 'https://example.supabase.co', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example', AUTH_JWKS_URL: 'https://example.supabase.co/auth/v1/.well-known/jwks.json', AUTH_ISSUER: 'https://example.supabase.co/auth/v1', AUTH_AUDIENCE: 'authenticated', DATA_MODE: 'atlas', MONGODB_URI: 'mongodb://example', AI_MODE: 'mock' });
+  const verify = async req => {
+    if (req.get('Authorization') !== 'Bearer verified-token') throw Object.assign(new Error('Sign in to continue.'), { status: 401, code: 'UNAUTHENTICATED' });
+    return identity;
+  };
+  let seenText = '';
+  let failNext = false;
+  const ai = { async extractResumeSkills({ text }) {
+    if (failNext) throw new Error('Gemini unavailable');
+    seenText = text;
+    // Stand-in for Gemini, run through the real validation: "COBOL" is not in the resume and must be dropped.
+    return { ...validateResumeSkills({ skills: ['Python', 'SolidWorks', 'python', 'COBOL', 'Embedded C'] }, { text }), origin: 'gemini' };
+  } };
+  const server = createApp({ config, db, authentication: { verify }, ai }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const root = `http://127.0.0.1:${server.address().port}`;
+  const headers = { Authorization: 'Bearer verified-token' };
+  const xml = '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Skills: Python, SolidWorks, Embedded C</w:t></w:r></w:p></w:body></w:document>';
+  const docx = zipSync({ 'word/document.xml': strToU8(xml) });
+  const form = () => {
+    const body = new FormData();
+    body.append('resume', new Blob([docx], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), 'resume.docx');
+    return body;
+  };
+
+  const uploaded = await (await fetch(`${root}/api/auth/resume`, { method: 'POST', headers, body: form() })).json();
+  assert.match(seenText, /Embedded C/);
+  assert.equal(uploaded.data.skillsStatus, 'updated');
+  assert.deepEqual(uploaded.data.skills, ['Python', 'SolidWorks', 'Embedded C']);
+  const profile = (await (await fetch(`${root}/api/auth/me`, { headers })).json()).data.profile;
+  assert.deepEqual(profile.skills, ['Python', 'SolidWorks', 'Embedded C']);
+  assert.equal(profile.skillsSource.filename, 'resume.docx');
+
+  // Onboarding after the upload carries the skills onto the member record.
+  const onboardingData = { universityName: 'A University', classification: 'junior', major: 'Mechanical Engineering', graduationYear: new Date().getUTCFullYear() + 1 };
+  assert.equal((await fetch(`${root}/api/auth/onboarding`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(onboardingData) })).status, 200);
+  assert.deepEqual([...db.data.get('members').values()][0].skills, ['Python', 'SolidWorks', 'Embedded C']);
+
+  failNext = true;
+  const retried = await fetch(`${root}/api/auth/resume`, { method: 'POST', headers, body: form() });
+  assert.equal(retried.status, 200, 'the resume is still saved when skills cannot be read');
+  assert.equal((await retried.json()).data.skillsStatus, 'failed');
+  const kept = (await (await fetch(`${root}/api/auth/me`, { headers })).json()).data.profile;
+  assert.deepEqual(kept.skills, ['Python', 'SolidWorks', 'Embedded C'], 'earlier skills are kept');
 });
