@@ -322,9 +322,8 @@ test('config fails closed; local bearer is restricted to loopback and fictional 
   const live = { DATA_MODE: 'atlas', AI_MODE: 'live', MONGODB_URI: 'mongodb://localhost', GEMINI_API_KEY: 'test-only', ATHENE_ENABLED: 'true', ATHENE_DEV_TOKEN: 't'.repeat(32) };
   assert.equal(readConfig(live).ATHENE_ENABLED, true);
   for (const values of [{ HOST: '0.0.0.0' }, { NODE_ENV: 'production' }, { MONGODB_DB: 'ithaca' }, { ATHENE_DEV_TOKEN: 'short' }]) assert.throws(() => readConfig({ ...live, ...values }), /requires/);
-  const production = { DATA_MODE: 'atlas', AI_MODE: 'live', MONGODB_URI: 'mongodb://atlas.example', GEMINI_API_KEY: 'test-only', ATHENE_ENABLED: 'true', NODE_ENV: 'production', AUTH_SESSION_SECRET: 's'.repeat(48), AUTH_ACCESS_CODE_SHA256: 'a'.repeat(64), AUTH_SESSION_MEMBER_ID: 'officer' };
-  assert.equal(readConfig(production).ATHENE_ENABLED, true);
-  for (const missing of ['AUTH_SESSION_SECRET', 'AUTH_ACCESS_CODE_SHA256', 'AUTH_SESSION_MEMBER_ID']) assert.throws(() => readConfig({ ...production, [missing]: '' }), /requires/);
+  const legacySession = { DATA_MODE: 'atlas', AI_MODE: 'live', MONGODB_URI: 'mongodb://atlas.example', GEMINI_API_KEY: 'test-only', ATHENE_ENABLED: 'true', NODE_ENV: 'production', AUTH_SESSION_SECRET: 's'.repeat(48), AUTH_ACCESS_CODE_SHA256: 'a'.repeat(64), AUTH_SESSION_MEMBER_ID: 'officer' };
+  assert.throws(() => readConfig(legacySession), /AUTH_MODE=supabase/);
 });
 test('HTTP upload/status/RAG/contribution/reprocess use real routing, auth and validation', async t => {
   const { service } = testService();
