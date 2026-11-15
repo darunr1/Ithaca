@@ -6,10 +6,10 @@ const reference = { clubId: string, memberId: string, sessionId: string, date: {
 export const definitions = {
   universities: schema(['name', 'timezone', 'semesterStart'], { name: string, state: string, timezone: string, semesterStart: string }),
   clubs: schema(['name', 'universityId', 'officerIds'], { name: string, universityId: string, officerIds: strings }),
-  members: schema(['name', 'universityId', 'clubIds', 'visibleToCompanies', 'openToNewClubs'], { name: string, email: string, clerkUserId: string, universityId: string, major: string, year: { bsonType: ['int', 'long'] }, clubIds: strings, visibleToCompanies: boolean, openToNewClubs: boolean, skills: strings }),
+  members: schema(['name', 'universityId', 'clubIds', 'visibleToCompanies', 'openToNewClubs'], { name: string, email: string, supabaseUserId: string, universityId: string, major: string, graduationYear: { bsonType: ['int', 'long'] }, year: { bsonType: ['int', 'long'] }, clubIds: strings, visibleToCompanies: boolean, openToNewClubs: boolean, skills: strings, createdAt: string, updatedAt: string }),
   userProfiles: schema(['internalMemberId', 'authProvider', 'authProviderUserId', 'name', 'email', 'clubIds', 'role', 'visibleToCompanies', 'openToNewClubs', 'onboarded', 'createdAt', 'updatedAt'], {
-    internalMemberId: string, authProvider: { enum: ['clerk'] }, authProviderUserId: string, name: string, email: string,
-    universityId: { bsonType: ['string', 'null'] }, major: { bsonType: ['string', 'null'] }, clubIds: strings,
+    internalMemberId: string, authProvider: { enum: ['supabase'] }, authProviderUserId: string, name: string, email: string,
+    universityId: { bsonType: ['string', 'null'] }, major: { bsonType: ['string', 'null'] }, graduationYear: { bsonType: ['int', 'long', 'null'] }, clubIds: strings,
     role: { enum: ['member'] }, visibleToCompanies: boolean, openToNewClubs: boolean, onboarded: boolean, createdAt: string, updatedAt: string
   }),
   sessions: schema(['clubId', 'date', 'week', 'title', 'takenBy'], { ...reference, title: string, takenBy: string }),
@@ -27,8 +27,8 @@ export const definitions = {
   connections: schema(['companyId', 'memberId', 'status', 'createdAt'], { companyId: string, memberId: string, status: { enum: ['requested', 'accepted', 'declined', 'withdrawn'] }, createdAt: string })
 };
 export const indexes = {
-  clubs: [{ key: { universityId: 1 } }], members: [{ key: { clubIds: 1 } }, { key: { visibleToCompanies: 1 } }, { key: { clerkUserId: 1 }, unique: true, sparse: true }],
-  userProfiles: [{ key: { authProviderUserId: 1 }, unique: true }, { key: { internalMemberId: 1 }, unique: true }, { key: { email: 1 } }],
+  clubs: [{ key: { universityId: 1 } }], members: [{ key: { clubIds: 1 } }, { key: { visibleToCompanies: 1 } }, { key: { supabaseUserId: 1 }, unique: true, sparse: true }],
+  userProfiles: [{ key: { authProvider: 1, authProviderUserId: 1 }, unique: true }, { key: { internalMemberId: 1 }, unique: true }, { key: { email: 1 } }],
   sessions: [{ key: { clubId: 1, date: -1 } }],
   attendance: [{ key: { sessionId: 1, memberId: 1 }, unique: true }, { key: { clubId: 1, week: 1 } }],
   contributions: [{ key: { clubId: 1, date: -1, status: 1 } }, { key: { clubId: 1, week: 1 } }, { key: { universityId: 1, week: 1 } }, { key: { memberId: 1, date: -1 } }],

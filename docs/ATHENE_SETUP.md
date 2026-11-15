@@ -73,27 +73,19 @@ NODE_ENV=development
 
 This token is accepted only from a loopback socket, with a loopback HOST, non-production NODE_ENV, and database name ending `_demo`. It represents the existing seeded officer `member-iris`; it does not create a user or grant access to another club. Do not expose this configuration through a reverse proxy or public tunnel. The seeded project's documents use fictional versions of team names as text; that does not create members or assert real achievements.
 
-**Shared production authentication:** leave `ATHENE_DEV_TOKEN` empty. For a controlled hackathon browser demo, configure a high-entropy access-code hash and signed session:
+**Shared production authentication:** leave `ATHENE_DEV_TOKEN`, `AUTH_SESSION_SECRET`, and all access-code settings empty. Configure Supabase as documented in [SUPABASE_AUTH.md](SUPABASE_AUTH.md):
 
 ```dotenv
-AUTH_SESSION_SECRET=<32+ random characters, separate from the access code>
-AUTH_ACCESS_CODE_SHA256=<SHA-256 hex digest of the high-entropy access code>
-AUTH_SESSION_MEMBER_ID=<existing officer members.id>
+AUTH_MODE=supabase
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+AUTH_JWKS_URL=https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+AUTH_ISSUER=https://<project-ref>.supabase.co/auth/v1
+AUTH_AUDIENCE=authenticated
 NODE_ENV=production
 ```
 
-The plaintext access code is entered in the Athena page and is never stored in Vercel or browser storage. Successful exchange creates an eight-hour `Secure`, `HttpOnly`, `SameSite=Strict` cookie. Atlas membership and project/officer authorization still run on every request. This is intended for a small trusted demo audience; use an identity provider for public multi-user deployment.
-
-For an external identity provider, configure instead:
-
-```dotenv
-AUTH_JWKS_URL=https://<identity-provider>/.well-known/jwks.json
-AUTH_ISSUER=https://<expected-issuer>
-AUTH_AUDIENCE=ithaca
-NODE_ENV=production
-```
-
-Athene verifies RS256/ES256 bearer JWTs, issuer, audience, signature, expiration and issued-at (maximum token age one hour). The authenticated `sub` must map to an existing `members.id`. No signup, password database, or session store is introduced. When shared authentication is implemented, inject `authenticate(req) => Promise<memberId>` through `createApp({ config, db, athene: { authenticate } })`; that adapter must verify identity, not trust `x-user-id`, request bodies, role labels, or frontend selections. Production startup still requires the documented auth configuration. Shared recruiter/consent access is future integration, not a membership bypass.
+Athene verifies RS256/ES256 bearer JWTs, issuer, audience, signature, expiration and issued-at (maximum token age one hour). The shared auth layer confirms the Supabase user, maps `sub` through `userProfiles` to an existing `members.id`, and injects only that server-verified member ID. It never trusts `x-user-id`, request bodies, role labels, frontend selections, or a localhost token. Atlas membership and project/officer authorization still run on every request.
 
 ## 4. Initialize collections and the vector index
 

@@ -33,7 +33,6 @@ export function validateAtheneConfig(config) {
     let jwks = false;
     try { jwks = Boolean(config.AUTH_JWKS_URL && config.AUTH_ISSUER && config.AUTH_AUDIENCE && new URL(config.AUTH_JWKS_URL).protocol === 'https:'); } catch { /* Invalid provider URLs fail closed. */ }
     const session = config.AUTH_SESSION_SECRET.length >= 32 && /^[a-f0-9]{64}$/i.test(config.AUTH_ACCESS_CODE_SHA256) && /^[a-zA-Z0-9_-]{1,128}$/.test(config.AUTH_SESSION_MEMBER_ID);
-    const clerk = config.AUTH_MODE === 'clerk' && config.CLERK_PUBLISHABLE_KEY?.startsWith('pk_') && config.CLERK_SECRET_KEY?.startsWith('sk_');
-    if (!jwks && !session && !clerk) throw new Error('Athene requires Clerk, HTTPS JWKS authentication, or a secure signed browser session.');
+    if (!jwks && !session) throw new Error('Athene requires HTTPS JWKS authentication or a secure signed browser session.');
   }
 }

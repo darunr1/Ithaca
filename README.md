@@ -4,9 +4,9 @@
 
 This is an initial foundation, not the complete hackathon product. All bundled identities, organizations, meetings, and evidence are fictional.
 
-**Athena backend:** project-document ingestion, Gemini RAG and MongoDB Atlas Vector Search are now available as an opt-in backend module. See [Athena setup and demo](docs/ATHENE_SETUP.md) and [API/team contracts](docs/ATHENE_API.md). Contribution proposals and approvals belong to the Kleos Ledger; Athena answers from uploaded project sources. This does not add authentication to unrelated foundation routes. The foundation status below describes the original shared application.
+**Athena backend:** project-document ingestion, Gemini RAG and MongoDB Atlas Vector Search are available as an opt-in backend module. See [Athena setup and demo](docs/ATHENE_SETUP.md) and [API/team contracts](docs/ATHENE_API.md). Contribution proposals and approvals belong to the Kleos Ledger; Athena answers from uploaded project sources. In production, the shared Supabase identity and Atlas authorization protect Athena and the rest of the workspace.
 
-**Production authentication:** the public landing page and Clerk-protected workspace are documented in [Clerk production setup](docs/CLERK_SETUP.md). `AUTH_MODE=demo` keeps the explicitly fictional local workflow; production uses `AUTH_MODE=clerk` with Atlas-backed profiles.
+**Production authentication:** the public landing page and Supabase-protected workspace are documented in [Supabase production setup](docs/SUPABASE_AUTH.md). `AUTH_MODE=demo` keeps the explicitly fictional local workflow; production uses `AUTH_MODE=supabase` with Atlas-backed profiles and authorization.
 
 ## Run locally
 
@@ -36,7 +36,7 @@ npm run ai:verify
 - Gemini SDK service functions, strict JSON schemas, source/roster checks, role-fit evidence checks, retry, and explicit mock behavior.
 - Scoring helpers and an upload/PDF extraction utility ready to wire into future routes.
 
-**Not implemented:** authentication/authorization, session or attendance writes, AI upload routes, draft approval/edit/rejection, transactional audit writes, applications, live Bow matching, connection acceptance, OCR, RAG, deployment, or a registered domain. Planned API routes return HTTP 501. Disabled buttons and Bow's static example are labeled. Demo identities and role labels are not access control. Use only fictional data until real authorization is implemented.
+**Not implemented:** session or attendance writes, transactional multi-document audit writes, applications, live Bow matching, connection acceptance, OCR, or a registered domain. Planned API routes return HTTP 501. Disabled buttons and Bow's static example are labeled. Demo identities remain limited to explicit fictional local mode; production authorization uses verified Supabase identities and Atlas records.
 
 ## Connect MongoDB Atlas
 

@@ -23,9 +23,12 @@ test('Vercel deployment routes API functions and frontend assets', () => {
   ]);
   assert.equal(vercel.outputDirectory, 'frontend');
   assert.deepEqual(vercel.rewrites.slice(2), [
+    { source: '/dashboard', destination: '/app.html' },
     { source: '/app', destination: '/app.html' },
-    { source: '/sign-in', destination: '/sign-in.html' },
-    { source: '/sign-up', destination: '/sign-up.html' }
+    { source: '/login', destination: '/login.html' },
+    { source: '/signup', destination: '/signup.html' },
+    { source: '/forgot-password', destination: '/forgot-password.html' },
+    { source: '/reset-password', destination: '/reset-password.html' }
   ]);
 });
 
@@ -106,7 +109,11 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
   assert.ok(html.includes('Engineering legacies deserve to be remembered.'));
   const workspaceHtml = await (await fetch(base + '/app.html')).text();
   for (const label of ['Ithaca Home', 'Athena', 'Kleos Ledger', 'The Court', 'Bow']) assert.ok(workspaceHtml.includes(label));
-  for (const path of ['/landing.css', '/workspace.js', '/clerk.js', '/app.js', '/styles.css', '/shared/api.js', '/core/home.js', '/recruiting/court.js']) assert.equal((await fetch(base + path)).status, 200);
+  assert.equal((await fetch(base + '/dashboard')).status, 200);
+  for (const [path, marker] of [['/login', 'Log in'], ['/signup', 'Create account'], ['/forgot-password', 'Send reset link'], ['/reset-password', 'Update password']]) {
+    const response = await fetch(base + path); assert.equal(response.status, 200); assert.ok((await response.text()).includes(marker));
+  }
+  for (const path of ['/landing.css', '/workspace.js', '/supabase.js', '/vendor/supabase.js', '/app.js', '/styles.css', '/shared/api.js', '/core/home.js', '/recruiting/court.js']) assert.equal((await fetch(base + path)).status, 200);
   const all = await get('/api/clubs/club-rocketry/rankings?range=all');
   assert.deepEqual(all.data.rows.map(r => r.points), [280, 250, 130]);
   const week = await get('/api/clubs/club-rocketry/rankings?range=week');

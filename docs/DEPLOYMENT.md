@@ -38,7 +38,7 @@ curl.exe -I "$ithacaUrl/core/home.js"
 curl.exe -I "$ithacaUrl/recruiting/court.js"
 ```
 
-`/api/health` must say `mode: demo`, `fictional: true`, `database: disabled`, and `authentication: fictional-demo`. `/` is public and `/app` opens the explicitly labeled local demo workspace. This is an honestly labeled mode, not a fallback from a failed live service.
+`/api/health` must say `mode: demo`, `fictional: true`, `database: disabled`, and `authentication: fictional-demo`. `/` is public and `/dashboard` opens the explicitly labeled local demo workspace. This is an honestly labeled mode, not a fallback from a failed live service.
 
 ## Enable Atlas, Gemini, and production Athena
 
@@ -68,13 +68,16 @@ ATHENE_CHUNK_SIZE=1400
 ATHENE_CHUNK_OVERLAP=200
 ATHENE_TOP_K=6
 ATHENE_MIN_SCORE=0.65
-AUTH_MODE=clerk
-CLERK_PUBLISHABLE_KEY=pk_live_...
-CLERK_SECRET_KEY=sk_live_...
+AUTH_MODE=supabase
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+AUTH_JWKS_URL=https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+AUTH_ISSUER=https://<project-ref>.supabase.co/auth/v1
+AUTH_AUDIENCE=authenticated
 NODE_ENV=production
 ```
 
-Configure verified email and Google login, production redirect URLs, and existing-member linkage exactly as described in [Clerk authentication and production setup](CLERK_SETUP.md). Never expose `CLERK_SECRET_KEY` or put `ATHENE_DEV_TOKEN` in Vercel. The Clerk publishable key is public by design and is the only Clerk key returned to the browser.
+Configure confirmed email, asymmetric signing keys, exact production redirects, and existing-member linkage exactly as described in [Supabase authentication and production setup](SUPABASE_AUTH.md). Never expose a Supabase secret/service-role key or put `ATHENE_DEV_TOKEN` in Vercel. The Supabase publishable key is public by design and is the only Supabase key returned to the browser.
 
 Use a restricted Atlas application user for only the intended database. Permit Vercel outbound connectivity in Atlas Network Access; a stable allowlist requires Vercel Secure Compute or another fixed-egress arrangement. Never put `ATHENE_DEV_TOKEN` in Vercel.
 
