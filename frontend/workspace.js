@@ -224,6 +224,7 @@ function studentHome(profile) {
   const major = profile.major || 'Major not provided';
   const classification = studentYear(profile.classification);
   const resumeName = profile.resume?.filename || '';
+  const hasClub = Boolean(profile.clubIds?.length);
   document.querySelector('#identity-detail').textContent = [classification, university].join(' · ');
   document.title = 'Your workspace · Ithaca';
   document.querySelector('#content').innerHTML = `<div class="studio-dashboard">
@@ -262,13 +263,14 @@ function studentHome(profile) {
         <ol class="studio-steps">
           <li class="done"><span class="studio-step-count">✓</span><div><strong>Build your student profile</strong><p>University, classification, major, and graduation year saved.</p></div><span class="studio-step-state">COMPLETE</span></li>
           <li class="${resumeName ? 'done' : 'current'}"><span class="studio-step-count">${resumeName ? '✓' : '02'}</span><div><strong>Keep your resume on hand</strong><p>${resumeName ? 'Your latest resume is saved in your private vault.' : 'Add a PDF or DOCX whenever you are ready.'}</p></div><span class="studio-step-state">${resumeName ? 'COMPLETE' : 'OPTIONAL'}</span></li>
-          <li><span class="studio-step-count">03</span><div><strong>Join an engineering organization</strong><p>Your club administrator can grant access to projects, contributions, and recruiting tools.</p></div><span class="studio-step-state">PENDING</span></li>
+          <li class="${hasClub ? 'done' : 'current'}"><span class="studio-step-count">${hasClub ? '✓' : '03'}</span><div><strong>Start or join an engineering organization</strong><p>${hasClub ? 'Your club membership is active.' : 'Create your own club below to become its first officer, or accept an invitation from an existing club.'}</p></div><span class="studio-step-state">${hasClub ? 'COMPLETE' : 'NEXT STEP'}</span></li>
         </ol>
         <div class="studio-member">
           <div><span class="studio-panel-kicker">YOUR MEMBERSHIP ID</span><code id="studio-member-id">${e(profile.internalMemberId)}</code><small>Share this with a club administrator to request access.</small></div>
           <button id="copy-member-id" type="button">Copy ID <span aria-hidden="true">↗</span></button>
         </div>
         <p id="member-copy-status" class="studio-status" role="status" aria-live="polite"></p>
+        <button id="go-to-club-setup" type="button" class="studio-upload-button">Create or join a club <span aria-hidden="true">↓</span></button>
       </section>
 
       <section class="studio-document-panel" id="studio-resume" aria-labelledby="studio-resume-title">
@@ -305,6 +307,7 @@ function studentHome(profile) {
       status.textContent = `Member ID: ${profile.internalMemberId}`;
     }
   });
+  document.querySelector('#go-to-club-setup')?.addEventListener('click', () => document.querySelector('.club-starter')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   resumeControls(profile);
   bindClubStarter();
 }
@@ -322,7 +325,6 @@ async function bindClubStarter() {
       const body = Object.fromEntries(new FormData(form));
       await api('/organizations', { method: 'POST', body });
       location.replace('/dashboard#home');
-      location.reload();
     } catch (error) {
       status.textContent = error.message || 'Unable to create a club.';
       submit.disabled = false;
