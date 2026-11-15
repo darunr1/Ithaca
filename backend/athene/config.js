@@ -21,18 +21,25 @@ export const atheneConfig = z.object({
   NODE_ENV: z.string().default('development')
 });
 
+const invalid = (code, message, variables = []) => Object.assign(new Error(message), {
+  code,
+  configurationError: true,
+  diagnosticFields: variables,
+  safeToLog: true
+});
+
 export function validateAtheneConfig(config) {
-  if (config.ATHENE_CHUNK_OVERLAP >= config.ATHENE_CHUNK_SIZE) throw new Error('ATHENE_CHUNK_OVERLAP must be smaller than ATHENE_CHUNK_SIZE.');
+  if (config.ATHENE_CHUNK_OVERLAP >= config.ATHENE_CHUNK_SIZE) throw invalid('ATHENE_CHUNK_RANGE_INVALID', 'ATHENE_CHUNK_OVERLAP must be smaller than ATHENE_CHUNK_SIZE.', ['ATHENE_CHUNK_OVERLAP', 'ATHENE_CHUNK_SIZE']);
   if (!config.ATHENE_ENABLED) return;
-  if (config.DATA_MODE !== 'atlas' || config.AI_MODE !== 'live') throw new Error('Athene requires DATA_MODE=atlas and AI_MODE=live; there is no production mock fallback.');
+  if (config.DATA_MODE !== 'atlas' || config.AI_MODE !== 'live') throw invalid('ATHENE_LIVE_MODES_REQUIRED', 'Athene requires DATA_MODE=atlas and AI_MODE=live.', ['ATHENE_ENABLED', 'DATA_MODE', 'AI_MODE']);
   if (config.ATHENE_DEV_TOKEN) {
     if (config.ATHENE_DEV_TOKEN.length < 32 || config.NODE_ENV === 'production' || !['127.0.0.1', '::1', 'localhost'].includes(config.HOST) || !config.MONGODB_DB.endsWith('_demo')) {
-      throw new Error('ATHENE_DEV_TOKEN requires 32+ characters, loopback HOST, a _demo database, and non-production NODE_ENV.');
+      throw invalid('ATHENE_DEV_TOKEN_FORBIDDEN', 'ATHENE_DEV_TOKEN requires 32+ characters, loopback HOST, a _demo database, and non-production NODE_ENV.', ['ATHENE_DEV_TOKEN', 'HOST', 'MONGODB_DB', 'NODE_ENV']);
     }
   } else {
     let jwks = false;
     try { jwks = Boolean(config.AUTH_JWKS_URL && config.AUTH_ISSUER && config.AUTH_AUDIENCE && new URL(config.AUTH_JWKS_URL).protocol === 'https:'); } catch { /* Invalid provider URLs fail closed. */ }
     const session = config.AUTH_SESSION_SECRET.length >= 32 && /^[a-f0-9]{64}$/i.test(config.AUTH_ACCESS_CODE_SHA256) && /^[a-zA-Z0-9_-]{1,128}$/.test(config.AUTH_SESSION_MEMBER_ID);
-    if (!jwks && !session) throw new Error('Athene requires HTTPS JWKS authentication or a secure signed browser session.');
+    if (!jwks && !session) throw invalid('ATHENE_AUTH_REQUIRED', 'Athene requires HTTPS JWKS authentication.', ['AUTH_JWKS_URL', 'AUTH_ISSUER', 'AUTH_AUDIENCE']);
   }
 }

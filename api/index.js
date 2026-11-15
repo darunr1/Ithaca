@@ -2,18 +2,28 @@ import express from 'express';
 import { readConfig } from '../backend/config.js';
 import { connectDatabase } from '../database/connection.js';
 import { createApp } from '../backend/app.js';
+import { logStartupFailure } from '../backend/startup-diagnostics.js';
 
 let applicationPromise;
 function getApplication() {
   if (!applicationPromise) {
     applicationPromise = (async () => {
-    const config = readConfig({ ...process.env, HOST: '127.0.0.1', NODE_ENV: 'production' });
-    const connection = await connectDatabase(config);
-    return createApp({ config, db: connection.db });
+      let stage = 'configuration';
+      try {
+        const config = readConfig({ ...process.env, HOST: '127.0.0.1', NODE_ENV: 'production' });
+        stage = 'database';
+        const connection = await connectDatabase(config);
+        stage = 'application';
+        return createApp({ config, db: connection.db });
+      } catch (error) {
+        error.startupStage = stage;
+        throw error;
+      }
     })().catch(error => {
       // Atlas outages can recover while a warm function instance is alive.
       // Do not permanently cache a rejected connection/bootstrap promise.
       applicationPromise = undefined;
+      logStartupFailure(error, { stage: error.startupStage, env: process.env });
       throw error;
     });
   }
@@ -30,7 +40,7 @@ app.use(async (req, res, next) => {
 });
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
-  const configurationError = /requires|ATHENE_|AUTH_|MONGODB_|GEMINI_/i.test(error.message || '');
+  const configurationError = error.startupStage === 'configuration' || error.configurationError;
   res.status(configurationError ? 503 : 500).json({
     error: {
       code: configurationError ? 'DEPLOYMENT_CONFIGURATION_ERROR' : 'STARTUP_FAILED',
