@@ -22,7 +22,7 @@ try {
         if (error) throw error;
         location.replace('/dashboard');
       } else if (route === '/signup') {
-        const { data, error } = await client.auth.signUp({ email: values.email, password: values.password, options: { data: { full_name: values.name }, emailRedirectTo: `${location.origin}/dashboard` } });
+        const { data, error } = await client.auth.signUp({ email: values.email, password: values.password, options: { data: { full_name: values.name, university_name: values.universityName, classification: values.classification }, emailRedirectTo: `${location.origin}/dashboard` } });
         if (error) throw error;
         if (data.session) location.replace('/dashboard');
         else { form.reset(); setStatus('Check your email and open the verification link to continue.'); }

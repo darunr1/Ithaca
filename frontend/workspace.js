@@ -65,16 +65,18 @@ function bindUniversitySearch() {
   });
 }
 
-function onboarding(profile) {
+function onboarding(profile, signupMetadata = {}) {
   const year = new Date().getFullYear();
-  const classificationOptions = Object.entries(classificationLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+  const initialUniversity = typeof signupMetadata.university_name === 'string' ? signupMetadata.university_name.slice(0, 160) : '';
+  const initialClassification = Object.hasOwn(classificationLabels, signupMetadata.classification) ? signupMetadata.classification : '';
+  const classificationOptions = Object.entries(classificationLabels).map(([value, label]) => `<option value="${value}" ${initialClassification === value ? 'selected' : ''}>${label}</option>`).join('');
   document.querySelector('#content').innerHTML = `<section class="panel onboarding">
     <p class="eyebrow">STEP 2 OF 2 · CREATE YOUR PROFILE</p>
     <h1>Tell us about your engineering journey.</h1>
     <p class="body-copy">Choose your school and academic classification, then optionally add a resume. Your resume stays private, and clubs or recruiter access are never assigned automatically.</p>
     <form id="onboarding-form">
       <label for="onboarding-university">University or college</label>
-      <input id="onboarding-university" name="universityName" type="text" list="onboarding-university-list" placeholder="Start typing your university (e.g. UT Dallas)" minlength="2" maxlength="160" autocomplete="organization" required>
+      <input id="onboarding-university" name="universityName" type="text" list="onboarding-university-list" placeholder="Start typing your university (e.g. UT Dallas)" value="${e(initialUniversity)}" minlength="2" maxlength="160" autocomplete="organization" required>
       <datalist id="onboarding-university-list"></datalist>
       <label for="onboarding-classification">Academic classification</label>
       <select id="onboarding-classification" name="classification" required><option value="">Select your year</option>${classificationOptions}</select>
@@ -168,7 +170,7 @@ try {
     document.querySelector('#identity-detail').textContent = profile.onboarded
       ? [classificationLabels[profile.classification], profile.universityName || profile.universityId].filter(Boolean).join(' · ')
       : 'Complete your profile';
-    if (me.onboardingRequired) onboarding(profile);
+    if (me.onboardingRequired) onboarding(profile, session.user?.user_metadata || {});
     else if (!profile.clubIds.length) unassignedProfile(profile);
     else await import('./app.js');
   }
