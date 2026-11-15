@@ -147,6 +147,7 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
     const output = await Promise.all(renderers.map(render => render()));
     for (const page of output) { assert.ok(page.includes('<h1>')); assert.ok(!page.includes('undefined')); }
     assert.ok(output[1].includes('Ask Athena'));
+    assert.ok(output[1].includes('Upload documents'));
     assert.ok(!output[1].includes('Proposed contributions'));
     assert.ok(output[0].includes('660'));
     assert.ok(!output[0].includes('Meridian'), 'Home stays scoped to Aster clubs');

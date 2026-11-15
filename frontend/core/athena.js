@@ -1,7 +1,8 @@
 import { api, apiJson, apiUpload } from '../shared/api.js';
 import { e, heading, notice } from '../shared/ui.js';
 
-const projectPath = '/projects/club-rocketry/athena';
+// Keep the user-facing product name Athena while matching the existing backend API slug.
+const projectPath = '/projects/club-rocketry/athene';
 
 async function renderAthena() {
   let documents = [];
