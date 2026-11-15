@@ -4,7 +4,7 @@
 
 This is an initial foundation, not the complete hackathon product. All bundled identities, organizations, meetings, and evidence are fictional.
 
-**Athene backend:** project-document ingestion, Gemini RAG and MongoDB Atlas Vector Search are now available as an opt-in backend module. See [Athene setup and demo](docs/ATHENE_SETUP.md) and [API/team contracts](docs/ATHENE_API.md). This does not enable the existing frontend's planned draft workflow or add authentication to unrelated foundation routes. The foundation status below describes the original shared application.
+**Athena backend:** project-document ingestion, Gemini RAG and MongoDB Atlas Vector Search are now available as an opt-in backend module. See [Athena setup and demo](docs/ATHENE_SETUP.md) and [API/team contracts](docs/ATHENE_API.md). Contribution proposals and approvals belong to the Kleos Ledger; Athena answers from uploaded project sources. This does not add authentication to unrelated foundation routes. The foundation status below describes the original shared application.
 
 ## Run locally
 

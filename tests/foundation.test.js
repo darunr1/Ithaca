@@ -110,7 +110,8 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
     const output = await Promise.all(views.map(module => Object.values(module)[0]()));
     for (const page of output) { assert.ok(page.includes('<h1>')); assert.ok(!page.includes('undefined')); }
     assert.ok(output[0].includes('420'));
-    assert.ok(output[1].includes('Approve · planned'));
+    assert.ok(output[1].includes('Ask Athena'));
+    assert.ok(!output[1].includes('Proposed contributions'));
     assert.ok(!output[3].includes('Sana Reed'));
     assert.ok((await views[2].renderKleos('week')).includes('70'));
     assert.ok((await views[3].renderCourt('no-such-skill')).includes('No opted-in profiles'));
