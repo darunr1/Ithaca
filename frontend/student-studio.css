@@ -126,7 +126,13 @@ body.student-workspace .studio-edit:hover{background:#eef0ff;color:#4053b0;trans
   border:1px solid #ffffffa8;box-shadow:0 20px 45px -22px #040b26c4;
   transform:rotate(-2deg);
 }
-.studio-id-card::after{content:'Ι';position:absolute;right:14px;bottom:6px;font:210px Georgia,serif;color:#a9b1da1a;pointer-events:none}
+.studio-id-card::after{content:'';position:absolute;right:-30px;bottom:-30px;width:200px;height:200px;background:url(/assets/ithaca-mark.png) center/contain no-repeat;opacity:.07;pointer-events:none}
+/* Ithaca logo placements */
+.student-top-logo{height:38px;width:auto;display:block}
+img.brand-mark.brand-logo-mark{width:42px;height:42px;border:0;border-radius:50%;padding:0;background:none;box-shadow:0 0 0 2px #ffffff2e}
+.setup-card-logo{width:48px;height:48px;flex:none;display:block}
+.studio-card-logo{height:24px;width:auto;display:block}
+img.module-hero-symbol.module-hero-logo{width:150px;height:150px;display:block;border-radius:50%;box-shadow:0 0 0 6px #ffffff1f}
 .studio-card-top,.studio-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;position:relative;z-index:1}
 .studio-card-top>span{font-size:14px;font-weight:800;letter-spacing:2px}
 .studio-card-top i{font:24px Georgia,serif;margin-right:4px;color:#6678bd}
@@ -214,7 +220,7 @@ body.student-workspace .setup-intro{
   border-radius:22px;min-height:620px;background:linear-gradient(155deg,#15223d,#30427c);
   color:#fff;padding:clamp(30px,4vw,50px);display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;
 }
-body.student-workspace .setup-intro::after{content:'Ι';position:absolute;right:-20px;bottom:-90px;font:350px Georgia,serif;color:#ffffff0b;pointer-events:none}
+body.student-workspace .setup-intro::after{content:'';position:absolute;right:-60px;bottom:-60px;width:320px;height:320px;background:url(/assets/ithaca-mark.png) center/contain no-repeat;opacity:.08;pointer-events:none}
 body.student-workspace .setup-eyebrow{color:#bcc8f8;letter-spacing:2px}
 body.student-workspace .setup-intro h1{color:#fff;font-size:clamp(36px,3.8vw,56px);line-height:1.12;letter-spacing:-2px;margin:22px 0}
 body.student-workspace .setup-intro>p{font-size:13px;color:#c9d3ed;line-height:1.85}

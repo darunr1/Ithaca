@@ -123,7 +123,7 @@ function onboarding(profile, signupMetadata = {}, editing = false) {
       <div class="setup-quote">“Great work should outlive graduation.” <span>ITHACA</span></div>
     </section>
     <section class="setup-form-card" aria-labelledby="setup-form-heading">
-      <div class="setup-card-heading"><div><p class="dashboard-kicker">${editing ? 'EDIT PROFILE' : 'STEP 2 OF 2'}</p><h2 id="setup-form-heading">Your student information</h2><p>All fields marked required help build your engineering profile.</p></div><span class="setup-card-mark" aria-hidden="true">Ι</span></div>
+      <div class="setup-card-heading"><div><p class="dashboard-kicker">${editing ? 'EDIT PROFILE' : 'STEP 2 OF 2'}</p><h2 id="setup-form-heading">Your student information</h2><p>All fields marked required help build your engineering profile.</p></div><img class="setup-card-logo" src="/assets/ithaca-mark.png" alt="" aria-hidden="true"></div>
       <form id="onboarding-form" class="student-form">
         <div class="student-field"><label for="onboarding-university">University or college <span>Required</span></label>
           <input id="onboarding-university" name="universityName" type="text" list="onboarding-university-list" placeholder="Search for your university" value="${e(university)}" minlength="2" maxlength="160" autocomplete="organization" required>
@@ -252,7 +252,7 @@ function studentHome(profile) {
         <div class="studio-spotlight-bottom"><span>ITHACA / CHAPTER 01</span><span class="studio-spotlight-dash"></span><span>BEGIN YOUR LEGACY</span></div>
       </div>
       <div class="studio-id-card">
-        <div class="studio-card-top"><span><i aria-hidden="true">Ι</i> ITHACA</span><small>STUDENT RECORD</small></div>
+        <div class="studio-card-top"><img class="studio-card-logo" src="/assets/ithaca-logo.png" alt="Ithaca"><small>STUDENT RECORD</small></div>
         <div class="studio-card-person"><small>PROFILE OF</small><strong>${e(profile.name)}</strong><span>${e(major)}</span></div>
         <div class="studio-card-bottom"><div><small>UNIVERSITY</small><strong>${e(university)}</strong></div><div><small>CLASS OF</small><strong>${e(profile.graduationYear || '—')}</strong></div></div>
       </div>
