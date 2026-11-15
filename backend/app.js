@@ -6,13 +6,15 @@ import { createWorkspace } from './services/workspace.js';
 import { readRoutes } from './routes/read.js';
 import { plannedRoutes } from './routes/planned.js';
 import { ledgerRoutes } from './routes/ledger.js';
+import { createCollegeDirectory } from './services/colleges.js';
+import { createCatalog } from './services/catalog.js';
 export function createApp({ config, db = null }) {
   if (config.DATA_MODE === 'atlas' && !db) throw new Error('Atlas mode requires a connected database.');
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
   const repository = createRepository(db);
-  const workspace = createWorkspace(repository);
+  const workspace = createWorkspace(repository, createCollegeDirectory(), createCatalog());
   const send = (res, data) => res.json({ data, meta: { mode: config.DATA_MODE, fictional: config.DATA_MODE === 'demo', foundation: true } });
   app.get('/api/health', async (req, res, next) => {
     try {

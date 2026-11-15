@@ -26,6 +26,8 @@ Errors: `{"error":{"code":"VALIDATION_ERROR","message":"..."}}`. Implemented sta
 | GET `/clubs/:id/rankings?range=week\|semester\|all` | Implemented | Sriram |
 | GET `/recruiter/profiles?clubId=...&skill=...` | Implemented, consent-filtered | Sriram |
 | GET `/recruiter/profiles/:id` | Implemented, consent-filtered | Sriram |
+| POST `/contribution-requests/:id/review` | Implemented, officer approve/custom/delete | Sriram |
+| POST `/contributions/:id/reject` | Implemented, officer soft-delete of an approved contribution | Sriram |
 | POST `/clubs/:id/sessions` | Planned / 501 | Sriram |
 | POST `/sessions/:id/attendance` | Planned / 501 | Sriram |
 | POST `/clubs/:id/contributions/drafts` | Planned / 501 | Darun + Sriram |

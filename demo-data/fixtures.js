@@ -5,10 +5,11 @@ export const universities = [
   { id: 'uni-meridian', name: 'Meridian Institute of Technology', timezone: 'America/Denver', semesterStart: '2026-08-17' }
 ];
 export const clubs = [
-  { id: 'club-rocketry', universityId: 'uni-aster', name: 'Aster Rocketry', category: 'Avionics & flight systems', project: 'Project Argos · flight computer', officerIds: ['member-iris', 'member-leo'] },
-  { id: 'club-electric', universityId: 'uni-aster', name: 'Aster Electric Racing', category: 'Battery systems & mobility', project: 'Helios EV · battery pack', officerIds: ['member-nora', 'member-kai'] },
-  { id: 'club-robotics', universityId: 'uni-aster', name: 'Aster Robotics', category: 'Autonomy & sensing', project: 'Talos · autonomous rover', officerIds: ['member-eli'] },
-  { id: 'club-meridian-space', universityId: 'uni-meridian', name: 'Meridian Space Systems', category: 'Propulsion & ground systems', project: 'Kestrel · hybrid sounding rocket', officerIds: ['member-tomas', 'member-ada'] }
+  // `organization` is the national organization the club is a chapter of (acronym from backend/data/engineering-organizations.csv).
+  { id: 'club-rocketry', universityId: 'uni-aster', name: 'Aster Rocketry', organization: 'AIAA', category: 'Avionics & flight systems', project: 'Project Argos · flight computer', officerIds: ['member-iris', 'member-leo'] },
+  { id: 'club-electric', universityId: 'uni-aster', name: 'Aster Electric Racing', organization: 'SAE', category: 'Battery systems & mobility', project: 'Helios EV · battery pack', officerIds: ['member-nora', 'member-kai'] },
+  { id: 'club-robotics', universityId: 'uni-aster', name: 'Aster Robotics', organization: 'IEEE', category: 'Autonomy & sensing', project: 'Talos · autonomous rover', officerIds: ['member-eli'] },
+  { id: 'club-meridian-space', universityId: 'uni-meridian', name: 'Meridian Space Systems', organization: 'AIAA', category: 'Propulsion & ground systems', project: 'Kestrel · hybrid sounding rocket', officerIds: ['member-tomas', 'member-ada'] }
 ];
 export const members = [
   { id: 'member-iris', name: 'Iris Vale', major: 'Electrical Engineering', year: 4, clubIds: ['club-rocketry'], visibleToCompanies: true, openToNewClubs: false, skills: ['Avionics', 'PCB design'] },

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { semesterOf, weekStart } from './scoring.js';
+import { contributionPoints, parseTerm, semesterOf, termsThrough, weekStart } from './scoring.js';
 export function httpError(status, code, message) { return Object.assign(new Error(message), { status, code }); }
 // Group dated entries into academic semesters, newest first.
 function bySemester(entries) {
@@ -11,7 +11,7 @@ function bySemester(entries) {
   }
   return [...groups.values()].sort((a, b) => b.key.localeCompare(a.key, undefined, { numeric: true }));
 }
-export function createWorkspace(repository) {
+export function createWorkspace(repository, colleges = null, catalog = null) {
   const requireRecord = async (collection, id) => {
     const record = await repository.one(collection, id);
     if (!record) throw httpError(404, 'NOT_FOUND', 'Record not found.');
@@ -63,8 +63,11 @@ export function createWorkspace(repository) {
       const university = await requireRecord('universities', club.universityId);
       // Demo uses a fixed story date; Atlas uses the current university-local date.
       const today = asOf || localToday(university.timezone);
-      const start = range === 'week' ? weekStart(today) : range === 'semester' ? university.semesterStart : '0000-01-01';
-      return { range, start, rows: await repository.rankings(clubId, start), caveat: 'Activity within this club; not a measure of engineering ability.' };
+      const term = parseTerm(range);
+      const start = term ? term.start : range === 'week' ? weekStart(today) : range === 'semester' ? university.semesterStart : '0000-01-01';
+      const end = term ? term.end : '9999-12-31';
+      const terms = termsThrough(today).map(({ id, label }) => ({ id, label }));
+      return { range, start, end, terms, rows: await repository.rankings(clubId, start, end), caveat: 'Activity within this club; not a measure of engineering ability.' };
     },
     // Officer-only: approved contributions for one club, grouped by semester.
     async semesters(clubId, actor) {
@@ -85,7 +88,10 @@ export function createWorkspace(repository) {
           entries: entries.sort((a, b) => b.date.localeCompare(a.date)).map(c => ({ id: c.id, memberId: c.memberId, name: nameOf(c.memberId), date: c.date, description: c.description, skills: c.skills, level: c.level, points: c.points }))
         };
       });
-      return { clubId, clubName: club.name, pendingRequests: pending.filter(d => d.origin === 'member-request').length, semesters };
+      const requests = pending.filter(d => d.origin === 'member-request')
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+        .map(d => ({ id: d.id, memberId: d.memberId, name: nameOf(d.memberId), date: d.date, description: d.description, skills: d.skills ?? [], suggestedLevel: d.suggestedLevel, evidence: d.source?.excerpt ?? '', createdAt: d.createdAt ?? null }));
+      return { clubId, clubName: club.name, pendingRequests: requests.length, requests, semesters };
     },
     // Members request credit for their own work; requests become pending drafts and award no points.
     async requestContribution(clubId, actor, input) {
@@ -103,20 +109,107 @@ export function createWorkspace(repository) {
       };
       return repository.insert('drafts', draft);
     },
+    // Officer review of a member request: approve (preset level or custom points) or delete.
+    // Order: validate, claim the pending draft (so only one review wins), then write contribution + audit.
+    // NOTE: not a multi-document transaction yet; Atlas should wrap these writes in a session transaction.
+    async reviewRequest(requestId, actor, { action, level, customPoints, reason }) {
+      const draft = await repository.one('drafts', requestId);
+      if (!draft || draft.origin !== 'member-request') throw httpError(404, 'NOT_FOUND', 'Request not found.');
+      const club = await requireRecord('clubs', draft.clubId);
+      if (!club.officerIds.includes(actor.id)) throw httpError(403, 'OFFICER_REQUIRED', 'Only officers of this club can review its requests.');
+      if (draft.memberId === actor.id) throw httpError(403, 'SELF_REVIEW', 'A different officer must review your own request.');
+      if (draft.status !== 'pending') throw httpError(409, 'ALREADY_REVIEWED', `This request was already ${draft.status}.`);
+      const now = new Date().toISOString();
+      if (action === 'delete') {
+        const claimed = await repository.claim('drafts', { id: requestId, status: 'pending' }, { status: 'rejected', reviewedBy: actor.id, reviewedAt: now, ...(reason ? { reviewNote: reason } : {}) });
+        if (!claimed) throw httpError(409, 'ALREADY_REVIEWED', 'This request was already reviewed.');
+        await repository.insert('auditLogs', { id: `audit-${randomUUID()}`, entryId: requestId, action: 'delete', before: draft, after: claimed, reviewerId: actor.id, createdAt: now });
+        return { request: claimed, contribution: null };
+      }
+      let points;
+      try { points = contributionPoints(level, customPoints); } catch (error) { throw httpError(400, 'VALIDATION_ERROR', error.message); }
+      const contributionId = `contribution-${randomUUID()}`;
+      const claimed = await repository.claim('drafts', { id: requestId, status: 'pending' }, { status: 'approved', reviewedBy: actor.id, reviewedAt: now, contributionId });
+      if (!claimed) throw httpError(409, 'ALREADY_REVIEWED', 'This request was already reviewed.');
+      const contribution = {
+        id: contributionId, clubId: club.id, universityId: club.universityId, memberId: draft.memberId, requestId,
+        date: draft.date, week: draft.week, description: draft.description, skills: draft.skills ?? [], level, points,
+        status: 'approved', approvedBy: actor.id,
+        source: { id: draft.source.id, title: draft.source.title || 'Member-submitted evidence', excerpt: draft.source.excerpt, memberSubmitted: true },
+        createdAt: now
+      };
+      await repository.insert('contributions', contribution);
+      await repository.insert('auditLogs', { id: `audit-${randomUUID()}`, entryId: contributionId, action: 'approve', before: draft, after: contribution, reviewerId: actor.id, createdAt: now });
+      return { request: claimed, contribution };
+    },
+    // Officer rejects an already-approved contribution. Soft delete: status becomes 'deleted' (dropped from all
+    // rankings/stats, which only count 'approved'), and the audit log keeps the before/after record.
+    async rejectContribution(contributionId, actor, { reason } = {}) {
+      const contribution = await repository.one('contributions', contributionId);
+      if (!contribution) throw httpError(404, 'NOT_FOUND', 'Contribution not found.');
+      const club = await requireRecord('clubs', contribution.clubId);
+      if (!club.officerIds.includes(actor.id)) throw httpError(403, 'OFFICER_REQUIRED', 'Only officers of this club can reject its contributions.');
+      if (contribution.memberId === actor.id) throw httpError(403, 'SELF_REVIEW', 'A different officer must review your own contribution.');
+      if (contribution.status !== 'approved') throw httpError(409, 'ALREADY_REVIEWED', 'This contribution was already rejected.');
+      const now = new Date().toISOString();
+      const rejected = await repository.claim('contributions', { id: contributionId, status: 'approved' }, { status: 'deleted', deletedBy: actor.id, deletedAt: now, ...(reason ? { deleteReason: reason } : {}) });
+      if (!rejected) throw httpError(409, 'ALREADY_REVIEWED', 'This contribution was already rejected.');
+      if (contribution.requestId) await repository.claim('drafts', { id: contribution.requestId }, { contributionRejected: true, contributionRejectedAt: now });
+      await repository.insert('auditLogs', { id: `audit-${randomUUID()}`, entryId: contributionId, action: 'delete', before: contribution, after: rejected, reviewerId: actor.id, createdAt: now });
+      return rejected;
+    },
     async myRequests(clubId, actor) {
       await requireRecord('clubs', clubId);
       return (await repository.list('drafts', { clubId, memberId: actor.id })).filter(d => d.origin === 'member-request').sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     },
+    async searchColleges(query) {
+      if (!colleges) return [];
+      return colleges.search(query, { registered: await repository.list('universities') });
+    },
     async universityLeaderboard(universityId) {
-      const university = await requireRecord('universities', universityId);
+      const university = await repository.one('universities', universityId);
+      if (!university) {
+        // A directory college with no Ithaca clubs yet: a real, empty leaderboard rather than a 404.
+        const college = colleges?.get(universityId);
+        if (!college) throw httpError(404, 'NOT_FOUND', 'Record not found.');
+        return { university: { id: college.id, name: college.name, location: [college.state, college.country].filter(Boolean).join(', ') || null, registered: false }, rows: [], caveat: 'No clubs from this college are on Ithaca yet.' };
+      }
       const [rows, clubs] = await Promise.all([repository.universityContributors(universityId), repository.list('clubs', { universityId })]);
       return {
-        university: { id: university.id, name: university.name },
+        university: { id: university.id, name: university.name, registered: true },
         rows: rows.map(r => ({ ...r, clubs: r.clubIds.map(id => clubs.find(c => c.id === id)?.name ?? id) })),
         caveat: 'Counts officer-approved contributions only; not a measure of engineering ability.'
       };
     },
     async universityTotals() { return repository.universityTotals(); },
+    leaderboardFilters() {
+      return { organizations: catalog?.organizations ?? [], majors: catalog?.majors ?? [] };
+    },
+    // Most contributions, filtered by any combination of college, national organization (club type) and major.
+    async leaderboard({ universityId, organization, major } = {}) {
+      if (organization && catalog && !catalog.hasOrganization(organization)) throw httpError(400, 'VALIDATION_ERROR', 'Unknown organization.');
+      if (major && catalog && !catalog.hasMajor(major)) throw httpError(400, 'VALIDATION_ERROR', 'Unknown major.');
+      let university = null;
+      if (universityId) {
+        const registered = await repository.one('universities', universityId);
+        if (registered) university = { id: registered.id, name: registered.name, registered: true };
+        else {
+          const college = colleges?.get(universityId);
+          if (!college) throw httpError(404, 'NOT_FOUND', 'Record not found.');
+          university = { id: college.id, name: college.name, location: [college.state, college.country].filter(Boolean).join(', ') || null, registered: false };
+        }
+      }
+      const filters = { university, organization: organization ? catalog?.organizations.find(o => o.acronym === organization) ?? { acronym: organization } : null, major: major || null };
+      if (university && !university.registered) return { filters, rows: [], caveat: `No clubs from ${university.name} are on Ithaca yet.` };
+      const [clubs, universities] = await Promise.all([repository.list('clubs'), repository.list('universities')]);
+      const clubIds = organization ? clubs.filter(c => c.organization === organization).map(c => c.id) : undefined;
+      const rows = clubIds && !clubIds.length ? [] : await repository.filteredContributors({ universityId: university?.id, clubIds, major: major || undefined });
+      return {
+        filters,
+        rows: rows.map(r => ({ ...r, universityName: universities.find(u => u.id === r.universityId)?.name ?? null, clubs: r.clubIds.map(id => clubs.find(c => c.id === id)?.name ?? id) })),
+        caveat: 'Counts officer-approved contributions only; not a measure of engineering ability.'
+      };
+    },
     async discovery({ clubId, skill, memberId } = {}) {
       const members = await repository.list('members', { visibleToCompanies: true });
       const profiles = [];

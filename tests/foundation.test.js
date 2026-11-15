@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readConfig } from '../backend/config.js';
 import { createApp } from '../backend/app.js';
 import { createRepository } from '../backend/repositories/records.js';
-import { contributionPoints, semesterOf, validateReviewer, weekStart } from '../backend/services/scoring.js';
+import { contributionPoints, parseTerm, semesterOf, termsThrough, validateReviewer, weekStart } from '../backend/services/scoring.js';
 import { universityContributorsPipeline, universityTotalsPipeline } from '../database/aggregations.js';
 import { validateExtraction, validateFit } from '../ai-service/schemas.js';
 import { createGeminiService } from '../ai-service/gemini.js';
@@ -85,6 +85,11 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
   assert.deepEqual(all.data.rows.map(r => r.points), [280, 250, 130]);
   const week = await get('/api/clubs/club-rocketry/rankings?range=week');
   assert.equal(week.data.rows[0].points, 70);
+  assert.deepEqual(week.data.terms.map(t => t.id), ['2026-spring', '2026-summer', '2026-fall', '2026-winter']);
+  assert.deepEqual((await get('/api/clubs/club-rocketry/rankings?range=2026-fall')).data.rows.map(r => r.points), [190, 130, 100]);
+  assert.deepEqual((await get('/api/clubs/club-rocketry/rankings?range=2026-spring')).data.rows.map(r => r.points), [90, 60, 30]);
+  assert.deepEqual((await get('/api/clubs/club-rocketry/rankings?range=2026-winter')).data.rows, []);
+  assert.equal((await fetch(base + '/api/clubs/club-rocketry/rankings?range=2026-autumn')).status, 400);
   const discovery = await get('/api/recruiter/profiles');
   assert.ok(!discovery.data.some(p => p.member.id === 'member-sana'));
   assert.ok(discovery.data.every(p => !('email' in p.member) && !('visibleToCompanies' in p.member)));
@@ -115,11 +120,13 @@ test('HTTP frontend, API, ranking, discovery privacy, validation and planned rou
     assert.ok(!output[0].includes('Meridian'), 'Home stays scoped to Aster clubs');
     assert.ok(output[2].includes('href="#member/member-leo"'), 'ranking names link to member stats');
     assert.ok(output[2].includes('Semester by semester'), 'default demo identity is an officer');
-    assert.ok(output[2].includes('Universities by contributions'));
+    assert.ok(!output[2].includes('Most contributions') && !output[2].includes('Universities by contributions'), 'leaderboard panels removed');
     assert.ok(output[5].includes('Leo Marin') && output[5].includes('Fall 2026') && output[5].includes('Spring 2026'));
     assert.ok(output[1].includes('Approve · planned'));
     assert.ok(!output[3].includes('Sana Reed'));
     assert.ok((await views[2].renderKleos('week')).includes('70'));
+    const termPage = await views[2].renderKleos('2026-spring');
+    assert.ok(termPage.includes('<option value="2026-spring" selected>Spring 2026</option>') && termPage.includes('Winter 2026') && !termPage.includes('>Semester</option>'));
     assert.ok((await views[3].renderCourt('no-such-skill')).includes('No opted-in profiles'));
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -156,7 +163,19 @@ test('Kleos Ledger: member stats, officer semesters, member requests, university
   assert.equal(draft.memberId, 'member-sana'); assert.equal(draft.status, 'pending'); assert.equal(draft.origin, 'member-request'); assert.ok(!('points' in draft));
   const mine = (await (await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana' })).json()).data;
   assert.ok(mine.some(d => d.id === draft.id));
-  assert.equal((await (await call('/api/clubs/club-rocketry/semesters', { as: 'member-leo' })).json()).data.pendingRequests, 1);
+  const officerView = (await (await call('/api/clubs/club-rocketry/semesters', { as: 'member-leo' })).json()).data;
+  assert.equal(officerView.pendingRequests, 1);
+  assert.deepEqual([officerView.requests[0].id, officerView.requests[0].name, officerView.requests[0].evidence], [draft.id, 'Sana Reed', valid.evidence]);
+  // Officers review requests in the ledger itself, not via a link out to Athena
+  globalThis.localStorage = { getItem: () => 'member-leo', setItem() {} };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, opts) => realFetch(new URL(url, base), opts);
+  try {
+    const { renderKleos } = await import('../frontend/core/kleos.js');
+    const page = await renderKleos();
+    assert.ok(page.includes('id="pending-requests"') && page.includes(valid.description));
+    assert.ok(!page.includes('href="#athena"'));
+  } finally { globalThis.fetch = realFetch; delete globalThis.localStorage; }
   assert.equal((await (await call('/api/members/member-sana')).json()).data.stats.totalPoints, 130, 'requests award no points');
   // University leaderboards
   const totals = (await (await call('/api/universities')).json()).data;
@@ -165,14 +184,141 @@ test('Kleos Ledger: member stats, officer semesters, member requests, university
   assert.deepEqual(aster.rows.slice(0, 2).map(r => [r.memberId, r.contributions, r.rank]), [['member-leo', 3, 1], ['member-iris', 3, 2]]);
   assert.ok(aster.rows.every(r => r.clubs.length && r.memberId !== 'member-ada'));
   assert.equal((await call('/api/universities/uni-missing/leaderboard')).status, 404);
+  // College search: directory + Ithaca universities, forgiving input
+  const search = async q => (await (await call(`/api/colleges/search?q=${encodeURIComponent(q)}`)).json()).data;
+  assert.equal((await search('UT Arlington'))[0].name, 'University of Texas at Arlington');
+  assert.equal((await search('uta'))[0].name, 'University of Texas at Arlington');
+  assert.equal((await search('MIT'))[0].name, 'Massachusetts Institute of Technology');
+  assert.equal((await search('stanferd'))[0].name, 'Stanford University', 'one-letter typo');
+  assert.equal((await search('texas a&m'))[0].name, 'Texas A&M University');
+  const asterHit = (await search('aster'))[0];
+  assert.deepEqual([asterHit.id, asterHit.registered], ['uni-aster', true], 'Ithaca universities are searchable and ranked first');
+  assert.deepEqual(await search(''), []);
+  assert.deepEqual(await search('zzzzqqq'), []);
+  const uta = (await search('UT Arlington'))[0];
+  const utaBoard = (await (await call(`/api/universities/${uta.id}/leaderboard`)).json()).data;
+  assert.deepEqual([utaBoard.university.name, utaBoard.university.location, utaBoard.university.registered, utaBoard.rows.length], ['University of Texas at Arlington', 'Texas, United States of America', false, 0]);
+  // Most contributions: club (national organization), college and major filters
+  const options = (await (await call('/api/leaderboard/filters')).json()).data;
+  assert.equal(options.organizations.length, 15); assert.equal(options.majors.length, 23);
+  assert.ok(options.organizations.some(o => o.acronym === 'IEEE') && options.majors.includes('Mechanical Engineering'));
+  const board = async params => (await (await call(`/api/leaderboard?${new URLSearchParams(params)}`)).json()).data;
+  const ids = rows => rows.map(r => r.memberId);
+  const everyone = await board({});
+  assert.deepEqual(ids(everyone.rows).slice(0, 3), ['member-leo', 'member-iris', 'member-ada'], 'all colleges by default');
+  assert.ok(everyone.rows.every(r => r.universityName && r.major));
+  assert.deepEqual(ids((await board({ organization: 'SAE' })).rows), ['member-nora', 'member-kai']);
+  assert.deepEqual(ids((await board({ organization: 'AIAA', universityId: 'uni-meridian' })).rows), ['member-ada', 'member-juno', 'member-tomas']);
+  assert.deepEqual((await board({ organization: 'ASME' })).rows, []);
+  assert.deepEqual(ids((await board({ major: 'Mechanical Engineering' })).rows), ['member-ada', 'member-kai']);
+  assert.deepEqual(ids((await board({ major: 'Mechanical Engineering', universityId: 'uni-aster' })).rows), ['member-kai']);
+  assert.deepEqual((await board({ universityId: uta.id })).rows, []);
+  assert.equal((await board({ universityId: uta.id })).filters.university.registered, false);
+  assert.equal((await call('/api/leaderboard?organization=NOPE')).status, 400);
+  assert.equal((await call('/api/leaderboard?major=Basket%20Weaving')).status, 400);
+  const longId = (await search('Cattaraugus Allegany Erie Wyoming'))[0].id;
+  assert.ok(longId.length > 80); assert.equal((await call(`/api/universities/${longId}/leaderboard`)).status, 200);
+});
+test('officers approve, give custom points to, or delete member requests', async t => {
+  const server = createApp({ config }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const call = async (path, { as, method = 'GET', body } = {}) => fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(as ? { 'X-Demo-Member': as } : {}) }, body: body && JSON.stringify(body) });
+  const json = async (...args) => (await call(...args)).json();
+  const submit = async description => (await json('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana', method: 'POST', body: { description, evidence: 'Meeting notes excerpt naming Sana.', suggestedLevel: 'medium', date: '2026-11-10' } })).data;
+  const review = (requestId, as, body) => call(`/api/contribution-requests/${requestId}/review`, { as, method: 'POST', body });
+  const sanaPoints = async () => (await json('/api/members/member-sana')).data.stats.totalPoints;
+  const before = await sanaPoints();
+  // Permissions and validation
+  const a = await submit('Calibrated the barometric altimeter against the ground station.');
+  assert.equal((await review(a.id, null, { action: 'approve', level: 'medium' })).status, 401);
+  assert.equal((await review(a.id, 'member-sana', { action: 'approve', level: 'high' })).status, 403, 'members cannot approve, including their own request');
+  assert.equal((await review(a.id, 'member-nora', { action: 'approve', level: 'high' })).status, 403, 'officer of another club');
+  for (const points of [45, 0, 110]) assert.equal((await review(a.id, 'member-iris', { action: 'approve', level: 'custom', customPoints: points })).status, 400, `custom ${points}`);
+  assert.equal((await review(a.id, 'member-iris', { action: 'approve', level: 'custom' })).status, 400, 'custom needs points');
+  assert.equal((await review(a.id, 'member-iris', { action: 'approve', level: 'medium', points: 999 })).status, 400, 'client cannot set points directly');
+  assert.equal((await review('draft-1', 'member-iris', { action: 'approve', level: 'low' })).status, 404, 'Athena drafts are not member requests');
+  // Approve with custom points
+  const approved = await review(a.id, 'member-iris', { action: 'approve', level: 'custom', customPoints: 40 });
+  assert.equal(approved.status, 200);
+  const { contribution, request } = (await approved.json()).data;
+  assert.deepEqual([contribution.points, contribution.level, contribution.approvedBy, contribution.memberId, request.status], [40, 'custom', 'member-iris', 'member-sana', 'approved']);
+  assert.equal(await sanaPoints(), before + 40);
+  assert.ok((await json('/api/members/member-sana')).data.contributions.some(c => c.id === contribution.id && c.source.memberSubmitted));
+  assert.equal((await review(a.id, 'member-leo', { action: 'approve', level: 'high' })).status, 409, 'cannot be reviewed twice');
+  // Approve at a preset level
+  const b = await submit('Documented the avionics bay wiring harness for next year.');
+  assert.equal((await (await review(b.id, 'member-leo', { action: 'approve', level: 'medium' })).json()).data.contribution.points, 60);
+  assert.equal(await sanaPoints(), before + 100);
+  // Delete
+  const c = await submit('Organized the bench for the next integration session.');
+  const deleted = (await (await review(c.id, 'member-iris', { action: 'delete' })).json()).data;
+  assert.deepEqual([deleted.request.status, deleted.contribution], ['rejected', null]);
+  assert.equal(await sanaPoints(), before + 100, 'deleting awards nothing');
+  assert.equal((await review(c.id, 'member-iris', { action: 'approve', level: 'low' })).status, 409);
+  // The officer queue and the member's own list both reflect the outcomes
+  const queue = (await json('/api/clubs/club-rocketry/semesters', { as: 'member-iris' })).data.requests.map(r => r.id);
+  assert.ok(![a.id, b.id, c.id].some(id => queue.includes(id)));
+  const mine = (await json('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana' })).data;
+  assert.deepEqual([a.id, b.id, c.id].map(id => mine.find(r => r.id === id).status), ['approved', 'approved', 'rejected']);
+  assert.ok(fixtures.auditLogs.some(l => l.entryId === contribution.id && l.action === 'approve' && l.reviewerId === 'member-iris'));
+  assert.ok(fixtures.auditLogs.some(l => l.entryId === c.id && l.action === 'delete'));
+});
+test('officers can reject previously approved contributions', async t => {
+  const server = createApp({ config }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const call = (path, { as, method = 'GET', body } = {}) => fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(as ? { 'X-Demo-Member': as } : {}) }, body: body && JSON.stringify(body) });
+  const reject = (contributionId, as, body = {}) => call(`/api/contributions/${contributionId}/reject`, { as, method: 'POST', body });
+  const irisPoints = async () => (await (await call('/api/members/member-iris')).json()).data.stats.totalPoints;
+  const before = await irisPoints();
+  // contribution-3: Iris's 90-point PCB power stage work in Aster Rocketry
+  assert.equal((await reject('contribution-3', null)).status, 401);
+  assert.equal((await reject('contribution-3', 'member-sana')).status, 403, 'members cannot reject');
+  assert.equal((await reject('contribution-3', 'member-nora')).status, 403, 'officer of another club');
+  assert.equal((await reject('contribution-3', 'member-iris')).status, 403, 'cannot reject your own contribution');
+  assert.equal((await reject('contribution-nope', 'member-leo')).status, 404);
+  assert.equal((await reject('contribution-3', 'member-leo', { points: 0 })).status, 400, 'unknown fields rejected');
+  const res = await reject('contribution-3', 'member-leo', { reason: 'Duplicate of an earlier entry.' });
+  assert.equal(res.status, 200);
+  const rejected = (await res.json()).data;
+  assert.deepEqual([rejected.status, rejected.deletedBy, rejected.deleteReason], ['deleted', 'member-leo', 'Duplicate of an earlier entry.']);
+  assert.equal(await irisPoints(), before - 90);
+  assert.equal((await reject('contribution-3', 'member-leo')).status, 409, 'cannot reject twice');
+  const history = (await (await call('/api/clubs/club-rocketry/semesters', { as: 'member-leo' })).json()).data;
+  assert.ok(!history.semesters.some(s => s.entries.some(c => c.id === 'contribution-3')));
+  assert.ok(!(await (await call('/api/members/member-iris')).json()).data.contributions.some(c => c.id === 'contribution-3'));
+  assert.ok(fixtures.auditLogs.some(l => l.entryId === 'contribution-3' && l.action === 'delete' && l.reviewerId === 'member-leo'));
+  // A contribution that came from a member request shows as "later rejected" on the member's side
+  const request = (await (await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana', method: 'POST', body: { description: 'Tested the recovery deployment charges on the bench.', evidence: 'Bench log naming Sana.', suggestedLevel: 'low', date: '2026-11-11' } })).json()).data;
+  const { contribution } = (await (await call(`/api/contribution-requests/${request.id}/review`, { as: 'member-iris', method: 'POST', body: { action: 'approve', level: 'low' } })).json()).data;
+  assert.equal((await reject(contribution.id, 'member-leo')).status, 200);
+  const mine = (await (await call('/api/clubs/club-rocketry/contribution-requests', { as: 'member-sana' })).json()).data.find(r => r.id === request.id);
+  assert.deepEqual([mine.status, mine.contributionRejected], ['approved', true]);
+  // The officer UI offers Reject on others' entries but not on your own
+  globalThis.localStorage = { getItem: () => 'member-leo', setItem() {} };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, opts) => realFetch(new URL(url, base), opts);
+  try {
+    const page = await (await import('../frontend/core/kleos.js')).renderKleos('all');
+    assert.ok(page.includes('data-reject-contribution="contribution-2"'), "Sana's entry is rejectable");
+    assert.ok(!page.includes('data-reject-contribution="contribution-1"'), "Leo can't reject his own entry");
+  } finally { globalThis.fetch = realFetch; delete globalThis.localStorage; }
 });
 test('university leaderboard pipelines match the demo repository contract', () => {
   const contributors = universityContributorsPipeline('uni-aster');
   assert.deepEqual(contributors[0], { $match: { universityId: 'uni-aster', status: 'approved' } });
   assert.ok(contributors.some(stage => stage.$sort?.contributions === -1));
   assert.ok(universityTotalsPipeline().some(stage => stage.$lookup?.from === 'universities'));
-  assert.deepEqual(['2026-01-15', '2026-06-01', '2026-08-24', '2026-12-31'].map(d => semesterOf(d).label), ['Spring 2026', 'Summer 2026', 'Fall 2026', 'Fall 2026']);
+  assert.deepEqual(['2026-01-15', '2026-02-01', '2026-06-01', '2026-08-24', '2026-11-30', '2026-12-31'].map(d => semesterOf(d).label), ['Winter 2025', 'Spring 2026', 'Summer 2026', 'Fall 2026', 'Fall 2026', 'Winter 2026']);
+  assert.deepEqual(semesterOf('2027-01-10'), semesterOf('2026-12-05'));
+  assert.equal(semesterOf('2026-12-05').end, '2027-02-01');
   assert.throws(() => semesterOf('2026-13-01'));
+  assert.deepEqual(termsThrough('2026-11-14').map(t => t.label), ['Spring 2026', 'Summer 2026', 'Fall 2026', 'Winter 2026']);
+  assert.deepEqual(termsThrough('2027-03-01').map(t => t.id).slice(-2), ['2027-spring', '2027-summer']);
+  assert.equal(parseTerm('2026-autumn'), null);
 });
 test('Atlas failures propagate instead of returning fixtures', async t => {
   const db = { collection() { throw new Error('Simulated outage'); }, async command() { throw new Error('Simulated outage'); } };
