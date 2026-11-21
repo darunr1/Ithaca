@@ -1,6 +1,6 @@
 /** Public contracts; runtime validation lives in routes.js and gemini.js. IDs are existing string IDs. */
 export interface Citation {
-  sourceId: string; documentId: string; chunkId: string; filename: string;
+  sourceId: string; projectId?: string; documentId: string; chunkId: string; filename: string;
   page: number | null; section: string | null; score: number;
 }
 export interface EvidenceStatement {
