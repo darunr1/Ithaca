@@ -11,7 +11,7 @@ import { extractionJsonSchema, validateExtraction, validateFit } from '../ai-ser
 import { createGeminiService, geminiJsonSchema } from '../ai-service/gemini.js';
 import { extractNotes } from '../backend/middleware/uploads.js';
 import { fixtures } from '../demo-data/fixtures.js';
-import { indexes, setupCollections } from '../database/definitions.js';
+import { definitions, indexes, setupCollections } from '../database/definitions.js';
 import { readFileSync } from 'node:fs';
 const config = readConfig({ DATA_MODE: 'demo', AI_MODE: 'mock' });
 
@@ -404,11 +404,13 @@ test('Atlas failures propagate instead of returning fixtures', async t => {
   const result = await fetch(base + '/api/clubs');
   assert.equal(result.status, 500); assert.ok(!('data' in await result.json()));
 });
-test('setup creates all 15 collections including club invitations and succession roles', async () => {
+test('setup creates every validated collection including project workspaces', async () => {
   const created = [], installed = [];
   const db = { listCollections: () => ({ toArray: async () => [] }), createCollection: async (name, options) => created.push({ name, options }), collection: name => ({ createIndex: async (key, options) => installed.push({ name, key, options }) }) };
   await setupCollections(db);
-  assert.equal(created.length, 15);
+  assert.equal(created.length, Object.keys(definitions).length);
+  assert.ok(created.some(item => item.name === 'clubProjects'));
+  assert.ok(created.some(item => item.name === 'projectTasks'));
   assert.ok(created.every(c => c.options.validationAction === 'error'));
   assert.ok(installed.some(i => i.name === 'attendance' && i.key.sessionId && i.key.memberId && i.options.unique));
 });
