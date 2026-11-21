@@ -69,6 +69,13 @@ test('Athene blocks non-officer uploads but keeps same-club member queries usabl
 test('Athene rejects foreign document/upload/query responses and citations before serialization', async t => {
   const foreign = { id: 'doc-secret', projectId: 'club-b', status: 'ready' };
   assert.throws(() => assertAtheneScope({ projectId: 'club-a', citations: [{ projectId: 'club-b' }] }, 'club-a'), { code: 'ATHENE_SCOPE_ERROR' });
+  // Reports that belong to the club must not smuggle other-club citations.
+  assert.throws(() => assertAtheneScope({ insights: [{ id: 'report-a', projectId: 'club-a',
+    citations: [{ projectId: 'club-b', documentId: 'foreign' }] }] }, 'club-a'),
+    { code: 'ATHENE_SCOPE_ERROR' });
+  // Historical reports without an explicit citation scope remain readable.
+  assert.equal(assertAtheneScope({ insights: [{ id: 'old', projectId: 'club-a',
+    citations: [{ documentId: 'historical' }] }] }, 'club-a').insights.length, 1);
   assert.throws(() => groundAnswer({ statements: [], insufficientEvidence: true, conflictingEvidence: false },
     [{ projectId: 'club-b', sourceId: 'src-foreign', text: 'Other club source' }], 'club-a'), { code: 'RETRIEVAL_SCOPE_ERROR' });
   const root = await server(t, {
