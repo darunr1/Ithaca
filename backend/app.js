@@ -49,7 +49,7 @@ export function createApp({ config, db = null, athene = {}, authentication = {},
   app.use('/api', readRoutes({ repository, workspace, send, config, db }));
   const authenticate = config.AUTH_MODE === 'supabase' ? async req => req.memberId || Promise.reject(fail(401, 'UNAUTHENTICATED', 'Sign in to continue.')) : athene.authenticate;
   app.use('/api/projects/:projectId/athene', atheneRoutes({ db, config, ...athene, authenticate }));
-  app.use('/api', ledgerRoutes({ workspace, send, config }));
+  app.use('/api', ledgerRoutes({ workspace, send, config, db }));
   app.use('/api', plannedRoutes());
   app.use('/api', (req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API route not found.' } }));
   for (const [route, file] of [['/dashboard', 'app.html'], ['/app', 'app.html'], ['/login', 'login.html'], ['/signup', 'signup.html'], ['/forgot-password', 'forgot-password.html'], ['/reset-password', 'reset-password.html']]) app.get(route, (req, res) => res.sendFile(`${frontend}/${file}`));
