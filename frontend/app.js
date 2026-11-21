@@ -1,6 +1,7 @@
 import { api, currentMemberId, setCurrentMemberId } from './shared/api.js';
 import { e, initials } from './shared/ui.js';
 import { renderHome, bindHome } from './core/home.js';
+import { renderProjects, bindProjects } from './core/projects.js';
 import { renderAthena, bindAthena } from './core/athena.js';
 import { renderKleos, bindKleos } from './core/kleos.js';
 import { renderMember } from './core/member.js';
@@ -8,7 +9,7 @@ import { bindCourtSuggestions } from './recruiting/suggestions.js';
 import { renderCourt, bindCourt } from './recruiting/court.js';
 import { renderBow, bindBow } from './recruiting/bow.js';
 // [title, view, bind?, nav section]
-const pages = { home: ['Ithaca Home', renderHome, bindHome], athena: ['Athena', renderAthena], kleos: ['Kleos Ledger', renderKleos, bindKleos], member: ['Member stats', renderMember, null, 'kleos'], court: ['The Court', renderCourt, bindCourt], bow: ['Bow', renderBow, bindBow] };
+const pages = { home: ['Ithaca Home', renderHome, bindHome], projects: ['Projects', renderProjects, bindProjects], athena: ['Athena', renderAthena], kleos: ['Kleos Ledger', renderKleos, bindKleos], member: ['Member stats', renderMember, null, 'kleos'], court: ['The Court', renderCourt, bindCourt], bow: ['Bow', renderBow, bindBow] };
 let revision = 0;
 async function render(argument) {
   const currentRevision = ++revision;
