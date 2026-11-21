@@ -45,7 +45,7 @@ export function groundAnswer(output, sources, projectId, contribution = false) {
     for (const evidence of statement.evidence) {
       const source = byId.get(evidence.sourceId);
       if (!source || !normalize(source.text).includes(normalize(evidence.quote))) throw fail(502, 'UNGROUNDED_CITATION', 'Gemini returned a source or quote that was not retrieved. Please retry.');
-      citations.set(source.sourceId, { sourceId: source.sourceId, documentId: source.documentId, chunkId: source.chunkId, filename: source.filename, page: source.page, section: source.section, score: source.score });
+      citations.set(source.sourceId, { sourceId: source.sourceId, projectId: source.projectId, documentId: source.documentId, chunkId: source.chunkId, filename: source.filename, page: source.page, section: source.section, score: source.score });
     }
     if (statement.attribution === 'documented' && (!statement.person || !statement.evidence.some(e => namedIn(e.quote, statement.person)))) throw fail(502, 'UNGROUNDED_ATTRIBUTION', 'A documented contribution lacks a named source excerpt.');
     return statement;
