@@ -66,8 +66,15 @@ export function assertAtheneScope(value, clubId) {
   const rows = Array.isArray(value) ? value
     : value?.documents ? value.documents
     : value?.insights ? value.insights : [value];
+  // Check top-level answers *and* citations nested in saved insight lists.
+  // Older saved reports predate citation.projectId, so absent values remain
+  // compatible; new citations carry explicit projectId from trusted retrieval.
+  const citationGroups = [
+    ...(Array.isArray(value?.citations) ? [value.citations] : []),
+    ...rows.filter(row => row && Array.isArray(row.citations)).map(row => row.citations)
+  ];
   if (!Array.isArray(rows) || rows.some(row => !row || row.projectId !== clubId) ||
-      (value?.citations || []).some(c => c.projectId && c.projectId !== clubId)) {
+      citationGroups.some(group => group.some(c => !c || (c.projectId && c.projectId !== clubId)))) {
     throw fail(503, 'ATHENE_SCOPE_ERROR', 'Athena returned data from an invalid club scope.');
   }
   return value;
