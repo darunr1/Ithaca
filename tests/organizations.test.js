@@ -143,6 +143,8 @@ test('real clubs, invitations, roster metrics and two-party officer succession',
   assert.equal(role.status, 201);
   const roleId = role.data.data.role.id;
   assert.equal((await call('bob', `/organizations/${clubId}/succession`)).status, 403);
+  assert.equal((await call('bob', `/organizations/${clubId}/succession/${roleId}/appoint`, { memberId: 'bob' })).status, 403);
+  assert.equal((await call('bob', `/organizations/${clubId}/invitations`, { memberId: 'outsider' })).status, 403);
   assert.equal((await call('alice', `/organizations/${clubId}/succession/${roleId}/nominate`, { memberId:'bob' })).status, 200);
   assert.equal((await call('bob', '/organizations/succession-offers')).data.data.length, 1);
   assert.equal((await call('alice', `/organizations/${clubId}/succession/${roleId}/appoint`, { memberId:'bob' })).status, 409);
@@ -150,4 +152,23 @@ test('real clubs, invitations, roster metrics and two-party officer succession',
   assert.equal((await call('alice', `/organizations/${clubId}/succession/${roleId}/appoint`, { memberId:'bob' })).status, 200);
   assert.equal((await call('bob', `/organizations/${clubId}/succession`)).status, 200);
   assert.equal((await call('outsider', `/organizations/${clubId}/succession`)).status, 404);
+  // Forged invite IDs cannot be accepted by anyone other than the invitee.
+  assert.equal((await call('alice', `/organizations/invitations/${inviteId}/respond`, { action: 'accept' })).status, 404);
+  const foreign = await call('outsider', '/organizations', { name: 'Other University Club' });
+  assert.equal(foreign.status, 201);
+  const foreignId = foreign.data.data.club.id;
+  await db.collection('drafts').insertOne({
+    id: 'request-in-other-club', clubId: foreignId, memberId: 'outsider', origin: 'member-request',
+    status: 'pending', description: 'Foreign request', date: '2026-11-11', skills: [], source: { id: 'evidence', excerpt: 'Private' }
+  });
+  assert.equal((await call('alice', '/contribution-requests/request-in-other-club/review', { action: 'approve', level: 'low' })).status, 404);
+  // A stale officerIds entry cannot grant privilege after the member loses membership.
+  await db.collection('members').updateOne({ id: 'bob' }, { $set: { clubIds: [] } });
+  assert.equal((await call('bob', `/organizations/${clubId}/succession`)).status, 404);
+  assert.equal((await call('bob', `/organizations/${clubId}/invitations`, { memberId: 'outsider' })).status, 404);
+  assert.equal((await call('bob', `/organizations/${clubId}/succession/${roleId}/appoint`, { memberId: 'alice' })).status, 404);
+  await db.collection('drafts').insertOne({ id: 'request-in-revoked-club', clubId, memberId: 'alice',
+    origin: 'member-request', status: 'pending', description: 'Pending work', date: '2026-11-11',
+    skills: [], source: { id: 'evidence2', excerpt: 'Private' } });
+  assert.equal((await call('bob', '/contribution-requests/request-in-revoked-club/review', { action: 'delete' })).status, 404);
 });
