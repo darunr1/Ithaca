@@ -18,19 +18,31 @@ const createProject = z.object({
   status: projectStatus.default('active'), targetDate: date.nullable().default(null),
   leadIds: z.array(id).max(15).default([])
 }).strict();
-const editProject = createProject.partial().strict();
+const editProject = z.object({
+  name: text(3, 120).optional(), description: text(0, 3000).optional(),
+  status: projectStatus.optional(), targetDate: date.nullable().optional(),
+  leadIds: z.array(id).max(15).optional()
+}).strict();
 const createMilestone = z.object({
   title: text(3, 150), description: text(0, 1000).default(''),
   dueDate: date.nullable().default(null), status: milestoneStatus.default('planned')
 }).strict();
-const editMilestone = createMilestone.partial().strict();
+const editMilestone = z.object({
+  title: text(3, 150).optional(), description: text(0, 1000).optional(),
+  dueDate: date.nullable().optional(), status: milestoneStatus.optional()
+}).strict();
 const createTask = z.object({
   title: text(3, 150), description: text(0, 3000).default(''),
   status: taskStatus.default('todo'), assigneeId: id.nullable().default(null),
   milestoneId: id.nullable().default(null), dueDate: date.nullable().default(null),
   evidenceUrl: evidenceUrl.default(null)
 }).strict();
-const editTask = createTask.partial().strict();
+const editTask = z.object({
+  title: text(3, 150).optional(), description: text(0, 3000).optional(),
+  status: taskStatus.optional(), assigneeId: id.nullable().optional(),
+  milestoneId: id.nullable().optional(), dueDate: date.nullable().optional(),
+  evidenceUrl: evidenceUrl.optional()
+}).strict();
 const createUpdate = z.object({
   type: z.enum(['progress', 'decision', 'blocker', 'meeting']),
   content: text(5, 3000)
