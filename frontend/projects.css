@@ -1,0 +1,91 @@
+/* Project Workspaces: scoped to Ithaca's existing module design system. */
+.module-projects .project-top-row,
+.module-projects .project-section-heading,
+.module-projects .project-milestone,
+.module-projects .project-update > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.module-projects .project-top-row { margin: 1.25rem 0; flex-wrap: wrap; }
+.module-projects .project-top-row label,
+.module-projects .project-form label { display: grid; gap: .4rem; font-weight: 600; }
+.module-projects .project-top-row select { min-width: 250px; }
+.module-projects .project-muted,
+.module-projects .project-empty,
+.module-projects .project-task small,
+.module-projects .project-milestone small,
+.module-projects .project-update small { color: #657187; }
+.module-projects .project-feedback { min-height: 1.2rem; margin: .5rem 0; font-size: .9rem; color: #246854; }
+.module-projects .project-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; margin: 1.25rem 0; }
+.module-projects .project-stats > div { padding: 1rem; background: #f5f7fa; border: 1px solid #e3e7ee; border-radius: 11px; display: grid; gap: .3rem; }
+.module-projects .project-stats strong { font-size: 1.6rem; font-weight: 750; }
+.module-projects .project-stats small { color: #657187; font-size: .79rem; }
+.module-projects .project-progress { height: 9px; overflow: hidden; border-radius: 100px; background: #e7eaf0; }
+.module-projects .project-progress span { display: block; height: 100%; background: #276b56; border-radius: inherit; }
+.module-projects .project-section-heading { margin: 1.8rem 0 .8rem; flex-wrap: wrap; }
+.module-projects .project-section-heading h2 { margin: 0; }
+.module-projects .project-section-heading small { color: #657187; }
+.module-projects .project-board { display: grid; grid-template-columns: repeat(4, minmax(200px, 1fr)); align-items: start; gap: 1rem; overflow-x: auto; padding-bottom: .5rem; }
+.module-projects .project-lane { background: #f5f7fa; border: 1px solid #e4e8ee; border-radius: 12px; min-height: 170px; padding: .9rem; }
+.module-projects .project-lane h3 { margin: 0 0 .8rem; font-size: .92rem; display: flex; justify-content: space-between; }
+.module-projects .project-lane h3 span { color: #657187; }
+.module-projects .project-task { display: grid; gap: .55rem; background: #fff; border: 1px solid #e1e5eb; border-radius: 10px; padding: .9rem; margin-bottom: .7rem; overflow-wrap: anywhere; }
+.module-projects .project-task strong { font-size: .9rem; }
+.module-projects .project-task p { margin: 0; font-size: .85rem; color: #3f4c60; }
+.module-projects .project-task a { font-size: .82rem; text-decoration: underline; }
+.module-projects .project-task select { width: 100%; }
+.module-projects .project-pill { display: inline-block; padding: .35rem .6rem; border-radius: 30px; background: #e6ebef; color: #35465a; font-size: .76rem; font-weight: 650; }
+.module-projects .project-done { background: #e4f5eb; color: #166443; }
+.module-projects .project-blocked { background: #fff2df; color: #855216; }
+.module-projects .project-in_progress { background: #e4effc; color: #285ca4; }
+.module-projects .project-two-column { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-top: 1.5rem; }
+.module-projects .project-form { display: grid; gap: .9rem; margin-top: 1.3rem; }
+.module-projects .project-form h3 { margin: 0; font-size: 1.05rem; }
+.module-projects .project-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.module-projects .project-form input,
+.module-projects .project-form textarea,
+.module-projects .project-form select,
+.module-projects .project-top-row select,
+.module-projects .project-milestone select {
+  min-height: 40px; width: 100%; box-sizing: border-box; padding: .6rem .7rem;
+  border: 1px solid #cbd4df; background: #fff; color: #263142; border-radius: 8px; font: inherit;
+}
+.module-projects .project-form textarea { min-height: 65px; resize: vertical; }
+.module-projects .project-form button { justify-self: start; }
+.module-projects .project-milestone { padding: .9rem 0; border-bottom: 1px solid #e4e8ee; }
+.module-projects .project-milestone > div { display: grid; gap: .3rem; min-width: 0; }
+.module-projects .project-milestone select { width: auto; max-width: 170px; }
+.module-projects .project-update-list { display: grid; gap: .75rem; }
+.module-projects .project-update { border: 1px solid #e2e6eb; padding: .9rem; border-radius: 10px; }
+.module-projects .project-update p { margin: .6rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.module-projects .project-empty { font-size: .85rem; margin: 0; }
+@media (max-width: 980px) {
+  .module-projects .project-board { grid-template-columns: repeat(2, minmax(210px, 1fr)); }
+  .module-projects .project-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 650px) {
+  .module-projects .project-board,
+  .module-projects .project-two-column,
+  .module-projects .project-form-row { grid-template-columns: minmax(0, 1fr); }
+  .module-projects .project-top-row,
+  .module-projects .project-top-row label { width: 100%; }
+  .module-projects .project-top-row select { min-width: 0; }
+}
+@media (prefers-color-scheme: dark) {
+  .module-projects .project-lane,
+  .module-projects .project-stats > div { background: #1e2733; border-color: #354457; }
+  .module-projects .project-task,
+  .module-projects .project-update { background: #202a36; border-color: #354457; }
+  .module-projects .project-task p,
+  .module-projects .project-muted,
+  .module-projects .project-empty,
+  .module-projects .project-task small,
+  .module-projects .project-update small { color: #b8c4d2; }
+  .module-projects .project-form input,
+  .module-projects .project-form textarea,
+  .module-projects .project-form select,
+  .module-projects .project-top-row select,
+  .module-projects .project-milestone select { background: #17202b; color: #ecf1f6; border-color: #45566b; }
+}
