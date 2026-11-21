@@ -16,7 +16,7 @@ const rows = {
   ],
   drafts: [{ id: 'draft-a', clubId: 'club-a', memberId: 'bob', source: { excerpt: 'private request' } }],
   sessions: [{ id: 'session-a', clubId: 'club-a', title: 'Meeting' }],
-  attendance: [{ id: 'attendance-a', clubId: 'club-b', memberId: 'bob', points: 12 }],
+  attendance: [{ id: 'attendance-a', clubId: 'club-b', memberId: 'bob', points: 12, date: '2026-11-11' }],
   contributions: [{ id: 'contribution-a', clubId: 'club-b', memberId: 'bob', points: 100, status: 'approved', skills: [], date: '2026-11-11' }]
 };
 const repository = {
