@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { createAuthenticator } from './auth.js';
+import { createAuthenticator, assertAtheneScope } from './auth.js';
 import { createAtheneGemini } from './gemini.js';
 import { createAtheneRepository, setupAthene } from './repository.js';
 import { createAtheneService } from './service.js';
@@ -44,7 +44,7 @@ export function atheneRoutes({ db, config, authenticate, service }) {
     req.releaseAthene = () => { if (req.releaseAthene) { inflight--; req.releaseAthene = null; } };
     next();
   });
-  const send = (res, data) => res.json({ data, meta: { mode: 'atlas', fictional: false, feature: 'athene' } });
+  const send = (res, data, clubId) => res.json({ data: clubId ? assertAtheneScope(data, clubId) : data, meta: { mode: 'atlas', fictional: false, feature: 'athene' } });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_REQUEST_UPLOAD_BYTES, files: 5, fields: 0, parts: 5 } }).array('files', 5);
   router.post('/documents', (req, res, next) => upload(req, res, async error => {
     try {
@@ -53,7 +53,7 @@ export function atheneRoutes({ db, config, authenticate, service }) {
       if (files.reduce((total, file) => total + file.size, 0) > MAX_REQUEST_UPLOAD_BYTES) throw fail(413, 'UPLOAD_TOO_LARGE', 'Combined upload size must be at most 4 MiB on serverless deployments.');
       const documents = await service.upload(req.atheneMemberId, req.params.projectId, req.files);
       res.status(documents.some(d => d.status === 'failed') ? 207 : documents.some(d => d.status === 'processing') ? 202 : 200);
-      send(res, { documents });
+      send(res, { documents }, req.params.projectId);
     } catch (error) { next(error); }
     finally { req.releaseAthene?.(); }
   }));
@@ -89,20 +89,20 @@ export function atheneRoutes({ db, config, authenticate, service }) {
   router.get('/documents', async (req, res) => {
     const before = req.query.before === undefined ? undefined : id.parse(req.query.before);
     const documents = await service.list(req.atheneMemberId, req.params.projectId, before);
-    send(res, { documents, nextBefore: documents.length === 100 ? documents.at(-1).id : null });
+    send(res, { documents, nextBefore: documents.length === 100 ? documents.at(-1).id : null }, req.params.projectId);
   });
-  router.get('/documents/:documentId', async (req, res) => send(res, await service.status(req.atheneMemberId, req.params.projectId, id.parse(req.params.documentId))));
+  router.get('/documents/:documentId', async (req, res) => send(res, await service.status(req.atheneMemberId, req.params.projectId, id.parse(req.params.documentId)), req.params.projectId));
   router.post('/documents/:documentId/reprocess', async (req, res, next) => {
-    try { const result = await service.reprocess(req.atheneMemberId, req.params.projectId, id.parse(req.params.documentId)); res.status(result.status === 'failed' ? 207 : result.status === 'processing' ? 202 : 200); send(res, result); }
+    try { const result = await service.reprocess(req.atheneMemberId, req.params.projectId, id.parse(req.params.documentId)); res.status(result.status === 'failed' ? 207 : result.status === 'processing' ? 202 : 200); send(res, result, req.params.projectId); }
     catch (error) { next(error); } finally { req.releaseAthene?.(); }
   });
   router.get('/insights', async (req, res) => {
-    send(res, { insights: await service.listInsights(req.atheneMemberId, req.params.projectId) });
+    send(res, { insights: await service.listInsights(req.atheneMemberId, req.params.projectId) }, req.params.projectId);
   });
   router.post('/insights', async (req, res, next) => {
     try {
       const { mode } = z.object({ mode: z.enum(['snapshot', 'risks', 'conflicts', 'handoff']) }).strict().parse(req.body);
-      res.status(201); send(res, await service.analyze(req.atheneMemberId, req.params.projectId, mode));
+      res.status(201); send(res, await service.analyze(req.atheneMemberId, req.params.projectId, mode), req.params.projectId);
     } catch (error) { next(error); } finally { req.releaseAthene?.(); }
   });
   router.post('/insights/:insightId/review', async (req, res, next) => {
@@ -112,14 +112,14 @@ export function atheneRoutes({ db, config, authenticate, service }) {
         status: z.enum(['reviewed', 'needs_followup']),
         note: z.string().trim().max(500).default('')
       }).strict().parse(req.body);
-      send(res, await service.reviewInsight(req.atheneMemberId, req.params.projectId, insightId, status, note));
+      send(res, await service.reviewInsight(req.atheneMemberId, req.params.projectId, insightId, status, note), req.params.projectId);
     } catch (error) { next(error); } finally { req.releaseAthene?.(); }
   });
   for (const contribution of [false, true]) router.post(contribution ? '/contributions/query' : '/query', async (req, res, next) => {
     try {
       const input = (contribution ? z.object({ person: z.string().trim().min(1).max(120).optional(), question: question.optional() }).strict().refine(v => v.person || v.question, 'Provide person or question.') : z.object({ question }).strict()).parse(req.body);
       const prompt = input.person ? `${input.question || 'What completed technical work is documented?'}\nAnalyze evidence specifically for ${input.person}.` : input.question;
-      send(res, await service.query(req.atheneMemberId, req.params.projectId, prompt, contribution));
+      send(res, await service.query(req.atheneMemberId, req.params.projectId, prompt, contribution), req.params.projectId);
     } catch (error) { next(error); } finally { req.releaseAthene?.(); }
   });
   router.use((req, res, next) => { req.releaseAthene?.(); next(); });
