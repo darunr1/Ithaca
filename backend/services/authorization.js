@@ -21,7 +21,7 @@ export async function requireClubMember(req, db, clubId) {
 
 export async function requireOfficer(req, db, clubId) {
   const access = await requireClubMember(req, db, clubId);
-  if (!access.club.officerIds?.includes(access.actor.id) && access.club.ownerId !== access.actor.id) {
+  if (!access.club.officerIds?.includes(access.actor.id)) {
     throw httpError(403, 'OFFICER_REQUIRED', 'Only officers of this club may perform this action.');
   }
   return { ...access, isOfficer: true };
@@ -34,7 +34,7 @@ export async function requireProjectLead(req, db, clubId, projectId) {
   if (!validId(projectId)) throw hidden();
   const project = await db.collection('clubProjects').findOne({ id: projectId, clubId });
   if (!project) throw hidden();
-  const isOfficer = access.club.officerIds?.includes(access.actor.id) || access.club.ownerId === access.actor.id;
+  const isOfficer = access.club.officerIds?.includes(access.actor.id);
   const isProjectLead = project.leadIds?.includes(access.actor.id) || false;
   if (!isOfficer && !isProjectLead) {
     throw httpError(403, 'PROJECT_LEAD_REQUIRED', 'Only club officers or this project’s leads may manage it.');

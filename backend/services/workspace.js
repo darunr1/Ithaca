@@ -28,13 +28,26 @@ export function createWorkspace(repository, colleges = null, catalog = null) {
       if (!member) throw httpError(401, 'IDENTITY_REQUIRED', 'Unknown demo identity.');
       return member;
     },
-    async roster(clubId) { await requireRecord('clubs', clubId); return repository.list('members', { clubIds: clubId }); },
-    async profile(memberId) {
+    async roster(clubId, { limited = false } = {}) {
+      await requireRecord('clubs', clubId);
+      const members = await repository.list('members', { clubIds: clubId });
+      // Live rosters must not disclose email, consent flags or other club memberships.
+      return limited ? members.map(({ id, name, major, year, skills, universityId }) => ({
+        id, name, major, year, skills, universityId, clubIds: [clubId]
+      })) : members;
+    },
+    async profile(memberId, { visibleClubIds = null } = {}) {
       const member = await requireRecord('members', memberId);
-      const [contributions, attendance] = await Promise.all([repository.history(memberId), repository.list('attendance', { memberId })]);
+      const [history, visits] = await Promise.all([repository.history(memberId), repository.list('attendance', { memberId })]);
+      const allowed = record => !visibleClubIds || visibleClubIds.includes(record.clubId);
+      const contributions = history.filter(allowed);
+      const attendance = visits.filter(allowed);
+      const visibleMember = visibleClubIds
+        ? { ...publicMember(member), clubIds: member.clubIds.filter(id => visibleClubIds.includes(id)) }
+        : member;
       const skillCounts = new Map();
       for (const c of contributions) for (const s of c.skills) skillCounts.set(s, (skillCounts.get(s) || 0) + 1);
-      const clubs = await Promise.all(member.clubIds.map(async clubId => {
+      const clubs = await Promise.all(visibleMember.clubIds.map(async clubId => {
         const club = await repository.one('clubs', clubId);
         if (!club) return null;
         const rows = await repository.rankings(clubId, '0000-01-01');
@@ -56,7 +69,7 @@ export function createWorkspace(repository, colleges = null, catalog = null) {
           return { key, label, contributions: done.length, attendance: present.length, points: entries.reduce((s, e) => s + e.points, 0) };
         })
       };
-      return { member, contributions, attendance, stats };
+      return { member: visibleMember, contributions, attendance, stats };
     },
     async rankings(clubId, range, asOf) {
       const club = await requireRecord('clubs', clubId);

@@ -11,8 +11,9 @@ const records = {
   members: [{ id: 'member-a', supabaseUserId: 'member-a', clubIds: ['club-a'], universityId: 'uni-a' },
     { id: 'officer', supabaseUserId: 'officer', clubIds: ['club-a'], universityId: 'uni-a' },
     { id: 'revoked', supabaseUserId: 'revoked', clubIds: [], universityId: 'uni-a' },
+    { id: 'former-owner', supabaseUserId: 'former-owner', clubIds: ['club-a'], universityId: 'uni-a' },
     { id: 'different-school', supabaseUserId: 'different-school', clubIds: ['club-a'], universityId: 'uni-b' }],
-  clubs: [{ id: 'club-a', universityId: 'uni-a', officerIds: ['officer', 'revoked'] },
+  clubs: [{ id: 'club-a', universityId: 'uni-a', officerIds: ['officer', 'revoked'], ownerId: 'former-owner' },
     { id: 'club-b', universityId: 'uni-b', officerIds: ['officer'] }],
   clubProjects: [{ id: 'project-a', clubId: 'club-a', leadIds: ['member-a'] },
     { id: 'project-b', clubId: 'club-b', leadIds: ['member-a'] }]
@@ -45,6 +46,7 @@ test('revoked officer and ordinary member are denied officer authority', async (
   assert.equal((await requireOfficer(request('officer'), db, 'club-a')).actor.id, 'officer');
   await assert.rejects(requireOfficer(request('member-a'), db, 'club-a'), { status: 403, code: 'OFFICER_REQUIRED' });
   await assert.rejects(requireOfficer(request('revoked'), db, 'club-a'), { status: 404 });
+  await assert.rejects(requireOfficer(request('former-owner'), db, 'club-a'), { status: 403, code: 'OFFICER_REQUIRED' });
   await assert.rejects(requireOfficer(request('officer'), db, 'club-b'), { status: 404 });
 });
 
@@ -54,4 +56,5 @@ test('lead is scoped to stored project and cannot inherit lead on another club p
   await assert.rejects(requireProjectLead(request('member-a'), db, 'club-b', 'project-b'), { status: 404 });
   await assert.rejects(requireProjectLead(request('member-a'), db, 'club-a', 'project-b'), { status: 404 });
   await assert.rejects(requireProjectLead(request('revoked'), db, 'club-a', 'project-a'), { status: 404 });
+  await assert.rejects(requireProjectLead(request('former-owner'), db, 'club-a', 'project-a'), { status: 403, code: 'PROJECT_LEAD_REQUIRED' });
 });
