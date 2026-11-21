@@ -36,6 +36,7 @@ const namedIn = (quote, person) => {
   return words(person).length > 0 && ` ${words(quote)} `.includes(` ${words(person)} `);
 };
 export function groundAnswer(output, sources, projectId, contribution = false) {
+  if (sources.some(source => source.projectId !== projectId)) throw fail(503, 'RETRIEVAL_SCOPE_ERROR', 'Retrieval returned invalid project scope.');
   try { output = answerSchema.parse(output); }
   catch { throw fail(502, 'INVALID_AI_RESPONSE', 'Gemini returned an invalid response.'); }
   const byId = new Map(sources.map(source => [source.sourceId, source]));
@@ -162,7 +163,10 @@ export function createAtheneService({ db, config, repository, ai, extract = extr
       const [vector] = await ai.embed([question], 'RETRIEVAL_QUERY', signal);
       const sources = (await repository.search(projectId, vector)).map(source => ({ ...source, sourceId: `src_${source.chunkId}` }));
       if (sources.some(s => s.projectId !== projectId)) throw fail(503, 'RETRIEVAL_SCOPE_ERROR', 'Invalid project retrieval scope.');
-      if (!sources.length) return groundAnswer({ statements: [], insufficientEvidence: true, conflictingEvidence: false }, [], projectId, contribution);
+      if (!sources.length) {
+        await authorize(memberId, projectId);
+        return groundAnswer({ statements: [], insufficientEvidence: true, conflictingEvidence: false }, [], projectId, contribution);
+      }
       const output = await ai.answer(question, sources, contribution, signal);
       // Recheck access after potentially slow API calls; membership might have changed.
       await authorize(memberId, projectId);
