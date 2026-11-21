@@ -153,7 +153,9 @@ test('project features require verified identity, enforce club isolation and per
   assert.equal((await call('alice', base + '/' + project.id + '/milestones/' + milestoneId, {
     method: 'PATCH', body: { status: 'done' }
   })).status, 200);
-  const update = await call('bob', base + '/' + project.id + '/updates',
+  assert.equal((await call('bob', base + '/' + project.id + '/updates',
+    { method: 'POST', body: { type: 'decision', content: 'Use a shared CAN message schema.' } })).status, 403);
+  const update = await call('alice', base + '/' + project.id + '/updates',
     { method: 'POST', body: { type: 'decision', content: 'Use a shared CAN message schema.' } });
   assert.equal(update.status, 201);
   assert.equal((await call('bob', base + '/' + project.id + '/updates',
