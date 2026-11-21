@@ -4,6 +4,27 @@ const boolean = { bsonType: 'bool' };
 const schema = (required, properties) => ({ $jsonSchema: { bsonType: 'object', required: ['id', ...required], properties: { id: string, ...properties } } });
 const reference = { clubId: string, memberId: string, sessionId: string, date: { bsonType: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, week: string };
 export const definitions = {
+  clubProjects: schema(['clubId', 'name', 'description', 'status', 'leadIds', 'createdBy', 'createdAt', 'updatedAt'], {
+    clubId: string, name: string, description: string, status: { enum: ['active', 'on_hold', 'completed', 'archived'] },
+    targetDate: { bsonType: ['string', 'null'] }, leadIds: strings, createdBy: string, createdAt: string, updatedAt: string
+  }),
+  projectMilestones: schema(['clubId', 'projectId', 'title', 'description', 'status', 'createdBy', 'createdAt'], {
+    clubId: string, projectId: string, title: string, description: string, status: { enum: ['planned', 'in_progress', 'done'] },
+    dueDate: { bsonType: ['string', 'null'] }, createdBy: string, createdAt: string
+  }),
+  projectTasks: schema(['clubId', 'projectId', 'title', 'description', 'status', 'createdBy', 'createdAt', 'updatedAt'], {
+    clubId: string, projectId: string, title: string, description: string, status: { enum: ['todo', 'in_progress', 'blocked', 'done'] },
+    assigneeId: { bsonType: ['string', 'null'] }, milestoneId: { bsonType: ['string', 'null'] },
+    dueDate: { bsonType: ['string', 'null'] }, evidenceUrl: { bsonType: ['string', 'null'] },
+    createdBy: string, createdAt: string, updatedAt: string
+  }),
+  projectUpdates: schema(['clubId', 'projectId', 'type', 'content', 'authorId', 'createdAt'], {
+    clubId: string, projectId: string, type: { enum: ['progress', 'decision', 'blocker', 'meeting'] },
+    content: string, authorId: string, createdAt: string
+  }),
+  projectAuditLogs: schema(['clubId', 'projectId', 'actorId', 'action', 'entityId', 'createdAt'], {
+    clubId: string, projectId: string, actorId: string, action: string, entityId: string, createdAt: string
+  }),
   universities: schema(['name', 'timezone', 'semesterStart'], { name: string, state: string, timezone: string, semesterStart: string }),
   clubs: schema(['name', 'universityId', 'officerIds'], { name: string, universityId: string, officerIds: strings }),
   members: schema(['name', 'universityId', 'clubIds', 'visibleToCompanies', 'openToNewClubs'], { name: string, email: string, supabaseUserId: string, universityId: string, major: string, graduationYear: { bsonType: ['int', 'long'] }, universityName: string, classification: { enum: ['freshman', 'sophomore', 'junior', 'senior', 'graduate'] }, year: { bsonType: ['int', 'long'] }, clubIds: strings, visibleToCompanies: boolean, openToNewClubs: boolean, skills: strings, createdAt: string, updatedAt: string }),
@@ -41,6 +62,11 @@ export const definitions = {
   connections: schema(['companyId', 'memberId', 'status', 'createdAt'], { companyId: string, memberId: string, status: { enum: ['requested', 'accepted', 'declined', 'withdrawn'] }, createdAt: string })
 };
 export const indexes = {
+  clubProjects: [{ key: { clubId: 1, updatedAt: -1 } }],
+  projectMilestones: [{ key: { clubId: 1, projectId: 1, createdAt: 1 } }],
+  projectTasks: [{ key: { clubId: 1, projectId: 1, status: 1 } }, { key: { assigneeId: 1, status: 1 } }],
+  projectUpdates: [{ key: { clubId: 1, projectId: 1, createdAt: -1 } }],
+  projectAuditLogs: [{ key: { clubId: 1, projectId: 1, createdAt: -1 } }],
   clubs: [{ key: { universityId: 1 } }], members: [{ key: { clubIds: 1 } }, { key: { visibleToCompanies: 1 } }, { key: { supabaseUserId: 1 }, unique: true, sparse: true }],
   userProfiles: [{ key: { authProvider: 1, authProviderUserId: 1 }, unique: true }, { key: { internalMemberId: 1 }, unique: true }, { key: { email: 1 } }],
   resumeFiles: [{ key: { authProviderUserId: 1 }, unique: true }],
