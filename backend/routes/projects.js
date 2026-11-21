@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { httpError } from '../services/workspace.js';
+import { requireClubMember } from '../services/authorization.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
@@ -69,14 +70,10 @@ export function projectRoutes({ db, send }) {
   const router = Router();
   async function accessFor(req) {
     const clubId = id.parse(req.params.clubId);
-    const [actor, club] = await Promise.all([
-      db.collection('members').findOne({ id: req.memberId }),
-      db.collection('clubs').findOne({ id: clubId })
-    ]);
-    if (!actor || !club || !actor.clubIds?.includes(clubId)) {
-      throw httpError(404, 'NOT_FOUND', 'Club not found or inaccessible.');
-    }
-    return { clubId, actor, club, isOfficer: club.officerIds?.includes(actor.id) || club.ownerId === actor.id };
+    // Use the same verified identity and current university/club membership
+    // boundary as the legacy API. Stale ownerId is not an officer grant.
+    const { actor, club } = await requireClubMember(req, db, clubId);
+    return { clubId, actor, club, isOfficer: Boolean(club.officerIds?.includes(actor.id)) };
   }
   async function projectFor(access, projectId) {
     const project = await db.collection('clubProjects').findOne({ id: id.parse(projectId), clubId: access.clubId });
