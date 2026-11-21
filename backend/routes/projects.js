@@ -1,0 +1,271 @@
+import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import { httpError } from '../services/workspace.js';
+
+const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const parsed = new Date(value + 'T12:00:00Z');
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}, 'Invalid calendar date.');
+const text = (min, max) => z.string().trim().min(min).max(max);
+const projectStatus = z.enum(['active', 'on_hold', 'completed', 'archived']);
+const taskStatus = z.enum(['todo', 'in_progress', 'blocked', 'done']);
+const milestoneStatus = z.enum(['planned', 'in_progress', 'done']);
+const evidenceUrl = z.string().url().max(1000).refine(value => /^https?:\/\//i.test(value), 'Use an http(s) URL.').nullable();
+const createProject = z.object({
+  name: text(3, 120), description: text(0, 3000).default(''),
+  status: projectStatus.default('active'), targetDate: date.nullable().default(null),
+  leadIds: z.array(id).max(15).default([])
+}).strict();
+const editProject = z.object({
+  name: text(3, 120).optional(), description: text(0, 3000).optional(),
+  status: projectStatus.optional(), targetDate: date.nullable().optional(),
+  leadIds: z.array(id).max(15).optional()
+}).strict();
+const createMilestone = z.object({
+  title: text(3, 150), description: text(0, 1000).default(''),
+  dueDate: date.nullable().default(null), status: milestoneStatus.default('planned')
+}).strict();
+const editMilestone = z.object({
+  title: text(3, 150).optional(), description: text(0, 1000).optional(),
+  dueDate: date.nullable().optional(), status: milestoneStatus.optional()
+}).strict();
+const createTask = z.object({
+  title: text(3, 150), description: text(0, 3000).default(''),
+  status: taskStatus.default('todo'), assigneeId: id.nullable().default(null),
+  milestoneId: id.nullable().default(null), dueDate: date.nullable().default(null),
+  evidenceUrl: evidenceUrl.default(null)
+}).strict();
+const editTask = z.object({
+  title: text(3, 150).optional(), description: text(0, 3000).optional(),
+  status: taskStatus.optional(), assigneeId: id.nullable().optional(),
+  milestoneId: id.nullable().optional(), dueDate: date.nullable().optional(),
+  evidenceUrl: evidenceUrl.optional()
+}).strict();
+const createUpdate = z.object({
+  type: z.enum(['progress', 'decision', 'blocker', 'meeting']),
+  content: text(5, 3000)
+}).strict();
+
+const clean = ({ _id, ...rest }) => rest;
+const newest = rows => rows.map(clean);
+const requirePatch = body => {
+  if (!Object.keys(body).length) throw httpError(400, 'EMPTY_PATCH', 'Provide at least one field to update.');
+  return body;
+};
+const assertManager = (access, project) => {
+  if (!access.isOfficer && !(project.leadIds || []).includes(access.actor.id)) {
+    throw httpError(403, 'PROJECT_LEAD_REQUIRED', 'Only club officers or this project’s leads can manage it.');
+  }
+};
+const assertOfficer = access => {
+  if (!access.isOfficer) throw httpError(403, 'OFFICER_REQUIRED', 'Only club officers can perform this action.');
+};
+
+// Auth is provided by the verified Supabase identity middleware and this router is
+// mounted ONLY in AUTH_MODE=supabase. Never trust a client-supplied member ID.
+export function projectRoutes({ db, send }) {
+  const router = Router();
+  async function accessFor(req) {
+    const clubId = id.parse(req.params.clubId);
+    const [actor, club] = await Promise.all([
+      db.collection('members').findOne({ id: req.memberId }),
+      db.collection('clubs').findOne({ id: clubId })
+    ]);
+    if (!actor || !club || !actor.clubIds?.includes(clubId)) {
+      throw httpError(404, 'NOT_FOUND', 'Club not found or inaccessible.');
+    }
+    return { clubId, actor, club, isOfficer: club.officerIds?.includes(actor.id) || club.ownerId === actor.id };
+  }
+  async function projectFor(access, projectId) {
+    const project = await db.collection('clubProjects').findOne({ id: id.parse(projectId), clubId: access.clubId });
+    if (!project) throw httpError(404, 'NOT_FOUND', 'Project not found or inaccessible.');
+    return project;
+  }
+  async function memberInClub(memberId, clubId) {
+    if (!memberId) return;
+    if (!(await db.collection('members').findOne({ id: memberId, clubIds: clubId }))) {
+      throw httpError(422, 'INVALID_ASSIGNEE', 'The selected member does not belong to this club.');
+    }
+  }
+  async function milestoneInProject(milestoneId, access, project) {
+    if (!milestoneId) return;
+    if (!(await db.collection('projectMilestones').findOne({
+      id: milestoneId, clubId: access.clubId, projectId: project.id
+    }))) throw httpError(422, 'INVALID_MILESTONE', 'Milestone does not belong to this project.');
+  }
+  async function changeLog(access, project, action, entityId) {
+    const now = new Date().toISOString();
+    await Promise.all([
+      db.collection('projectAuditLogs').insertOne({
+        id: 'project-audit-' + randomUUID(), clubId: access.clubId,
+        projectId: project.id, actorId: access.actor.id, action, entityId, createdAt: now
+      }),
+      db.collection('clubProjects').updateOne({ id: project.id, clubId: access.clubId }, { $set: { updatedAt: now } })
+    ]);
+  }
+
+  router.get('/:clubId/projects', async (req, res) => {
+    const access = await accessFor(req);
+    const rows = await db.collection('clubProjects').find({ clubId: access.clubId }).sort({ updatedAt: -1 }).limit(200).toArray();
+    send(res, { projects: newest(rows) });
+  });
+
+  router.post('/:clubId/projects', async (req, res) => {
+    const access = await accessFor(req);
+    assertOfficer(access);
+    const input = createProject.parse(req.body ?? {});
+    for (const leadId of new Set(input.leadIds)) await memberInClub(leadId, access.clubId);
+    const now = new Date().toISOString();
+    const project = {
+      id: 'project-' + randomUUID(), clubId: access.clubId,
+      ...input, leadIds: [...new Set(input.leadIds)],
+      createdBy: access.actor.id, createdAt: now, updatedAt: now
+    };
+    await db.collection('clubProjects').insertOne(project);
+    await changeLog(access, project, 'project.created', project.id);
+    res.status(201);
+    send(res, { project: clean(project) });
+  });
+
+  router.get('/:clubId/projects/:projectId', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    const scope = { clubId: access.clubId, projectId: project.id };
+    const [milestones, tasks, updates] = await Promise.all([
+      db.collection('projectMilestones').find(scope).sort({ createdAt: 1 }).limit(200).toArray(),
+      db.collection('projectTasks').find(scope).sort({ createdAt: -1 }).limit(500).toArray(),
+      db.collection('projectUpdates').find(scope).sort({ createdAt: -1 }).limit(100).toArray()
+    ]);
+    const completed = tasks.filter(task => task.status === 'done').length;
+    send(res, {
+      project: clean(project), milestones: newest(milestones), tasks: newest(tasks), updates: newest(updates),
+      summary: { totalTasks: tasks.length, completedTasks: completed, blockedTasks: tasks.filter(task => task.status === 'blocked').length,
+        completionPercent: tasks.length ? Math.round(100 * completed / tasks.length) : 0 },
+      permissions: { canManage: access.isOfficer || (project.leadIds || []).includes(access.actor.id), actorId: access.actor.id }
+    });
+  });
+
+  router.patch('/:clubId/projects/:projectId', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    assertManager(access, project);
+    const patch = requirePatch(editProject.parse(req.body ?? {}));
+    if ('leadIds' in patch) {
+      assertOfficer(access);
+      for (const leadId of new Set(patch.leadIds)) await memberInClub(leadId, access.clubId);
+      patch.leadIds = [...new Set(patch.leadIds)];
+    }
+    await db.collection('clubProjects').updateOne({ id: project.id, clubId: access.clubId }, { $set: { ...patch, updatedAt: new Date().toISOString() } });
+    await changeLog(access, project, 'project.updated', project.id);
+    send(res, { project: clean({ ...project, ...patch }) });
+  });
+
+  router.post('/:clubId/projects/:projectId/milestones', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    assertManager(access, project);
+    const input = createMilestone.parse(req.body ?? {});
+    const milestone = { id: 'milestone-' + randomUUID(), clubId: access.clubId, projectId: project.id,
+      ...input, createdBy: access.actor.id, createdAt: new Date().toISOString() };
+    await db.collection('projectMilestones').insertOne(milestone);
+    await changeLog(access, project, 'milestone.created', milestone.id);
+    res.status(201); send(res, { milestone: clean(milestone) });
+  });
+
+  router.patch('/:clubId/projects/:projectId/milestones/:milestoneId', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    assertManager(access, project);
+    const milestoneId = id.parse(req.params.milestoneId);
+    const patch = requirePatch(editMilestone.parse(req.body ?? {}));
+    const result = await db.collection('projectMilestones').updateOne({
+      id: milestoneId, clubId: access.clubId, projectId: project.id
+    }, { $set: patch });
+    if (!result.matchedCount && !result.modifiedCount) throw httpError(404, 'NOT_FOUND', 'Milestone not found.');
+    await changeLog(access, project, 'milestone.updated', milestoneId);
+    send(res, { milestoneId, ...patch });
+  });
+
+  router.post('/:clubId/projects/:projectId/tasks', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    const input = createTask.parse(req.body ?? {});
+    const canManage = access.isOfficer || (project.leadIds || []).includes(access.actor.id);
+    if (!canManage && input.assigneeId && input.assigneeId !== access.actor.id) {
+      throw httpError(403, 'ASSIGNMENT_NOT_ALLOWED', 'Members may only assign tasks to themselves.');
+    }
+    const assigneeId = canManage ? input.assigneeId : access.actor.id;
+    await memberInClub(assigneeId, access.clubId);
+    await milestoneInProject(input.milestoneId, access, project);
+    const now = new Date().toISOString();
+    const task = { id: 'task-' + randomUUID(), clubId: access.clubId, projectId: project.id,
+      ...input, assigneeId, createdBy: access.actor.id, createdAt: now, updatedAt: now };
+    await db.collection('projectTasks').insertOne(task);
+    await changeLog(access, project, 'task.created', task.id);
+    res.status(201); send(res, { task: clean(task) });
+  });
+
+  router.patch('/:clubId/projects/:projectId/tasks/:taskId', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    const taskId = id.parse(req.params.taskId);
+    const task = await db.collection('projectTasks').findOne({
+      id: taskId, clubId: access.clubId, projectId: project.id
+    });
+    if (!task) throw httpError(404, 'NOT_FOUND', 'Task not found.');
+    const canManage = access.isOfficer || (project.leadIds || []).includes(access.actor.id);
+    const patch = requirePatch(editTask.parse(req.body ?? {}));
+    if (!canManage) {
+      if (task.assigneeId !== access.actor.id) throw httpError(403, 'TASK_PERMISSION_REQUIRED', 'Only assigned members can update this task.');
+      if (Object.keys(patch).some(key => !['status', 'evidenceUrl'].includes(key))) {
+        throw httpError(403, 'TASK_PERMISSION_REQUIRED', 'Assigned members can update status and evidence only.');
+      }
+    }
+    if ('assigneeId' in patch) await memberInClub(patch.assigneeId, access.clubId);
+    if ('milestoneId' in patch) await milestoneInProject(patch.milestoneId, access, project);
+    const filter = { id: taskId, clubId: access.clubId, projectId: project.id,
+      ...(canManage ? {} : { assigneeId: access.actor.id }) };
+    const result = await db.collection('projectTasks').updateOne(filter,
+      { $set: { ...patch, updatedAt: new Date().toISOString() } });
+    if (!result.matchedCount && !result.modifiedCount) throw httpError(409, 'TASK_CHANGED', 'The task assignment changed. Refresh and retry.');
+    await changeLog(access, project, 'task.updated', taskId);
+    send(res, { taskId, ...patch });
+  });
+
+  router.post('/:clubId/projects/:projectId/updates', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    const input = createUpdate.parse(req.body ?? {});
+    // A decision reads as an official club record, so it requires a lead/officer.
+    if (input.type === 'decision') assertManager(access, project);
+    const update = { id: 'project-update-' + randomUUID(), clubId: access.clubId,
+      projectId: project.id, ...input, authorId: access.actor.id, createdAt: new Date().toISOString() };
+    await db.collection('projectUpdates').insertOne(update);
+    await changeLog(access, project, 'update.created', update.id);
+    res.status(201); send(res, { update: clean(update) });
+  });
+
+  // Portable, read-only handoff export. No separate AI service or paid dependency.
+  router.get('/:clubId/projects/:projectId/handoff', async (req, res) => {
+    const access = await accessFor(req);
+    const project = await projectFor(access, req.params.projectId);
+    const scope = { clubId: access.clubId, projectId: project.id };
+    const [milestones, tasks, updates] = await Promise.all([
+      db.collection('projectMilestones').find(scope).sort({ createdAt: 1 }).limit(200).toArray(),
+      db.collection('projectTasks').find(scope).sort({ createdAt: 1 }).limit(500).toArray(),
+      db.collection('projectUpdates').find(scope).sort({ createdAt: -1 }).limit(100).toArray()
+    ]);
+    const safe = value => String(value || '').replace(/[\r\n]+/g, ' ').trim();
+    const lines = ['# ' + safe(project.name), '', safe(project.description), '', 'Status: ' + project.status,
+      'Target date: ' + (project.targetDate || 'Not set'), '', '## Milestones', ''];
+    lines.push(...(milestones.length ? milestones.map(m => '- [' + (m.status === 'done' ? 'x' : ' ') + '] ' + safe(m.title) + ' (' + m.status + ', due ' + (m.dueDate || 'TBD') + ')') : ['No milestones recorded.']));
+    lines.push('', '## Tasks', '');
+    lines.push(...(tasks.length ? tasks.map(t => '- [' + (t.status === 'done' ? 'x' : ' ') + '] ' + safe(t.title) + ' — ' + t.status + ', assigned: ' + (t.assigneeId || 'unassigned') + ', due: ' + (t.dueDate || 'TBD') + (t.evidenceUrl ? ', evidence: ' + t.evidenceUrl : '')) : ['No tasks recorded.']));
+    lines.push('', '## Decisions and updates', '');
+    lines.push(...(updates.length ? updates.map(u => '- ' + u.createdAt.slice(0, 10) + ' [' + u.type + '] ' + safe(u.content)) : ['No project updates recorded.']));
+    send(res, { filename: 'ithaca-handoff-' + project.id + '.md', markdown: lines.join('\n') });
+  });
+  return router;
+}

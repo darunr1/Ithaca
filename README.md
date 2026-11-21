@@ -27,9 +27,17 @@ npm run ai:verify
 
 `ai:verify` skips explicitly when no key is present. With a key, it sends one fictional note and validates Gemini's structured response (one retry is permitted). Never put API keys in frontend files.
 
+## Club project workspaces (beta)
+
+Use **Projects** from the authenticated club dashboard to organize real milestones, assigned tasks, progress updates, decisions, blockers, and read-only Markdown handoffs. Club officers create projects, project leads manage scoped work, and ordinary members update their assigned tasks or record their progress. The default demo experience shows a separate, explicitly fictional sample board.
+
+This feature requires Supabase authentication and a MongoDB Atlas database. After reviewing database changes, apply the additive new project collection validators/indexes with `npm run db:setup`. See [Project Workspaces setup and API](docs/PROJECT_WORKSPACES.md), [product roadmap](docs/ROADMAP.md), [contribution guidelines](CONTRIBUTING.md) and [security policy](SECURITY.md).
+
+**Important:** The project APIs and UI are the first beta slice, not a production security certification. Before inviting real clubs, independently audit existing and new routes, transactional audit writes, data export/backup, and privacy defaults. The repo is public but a code license has not yet been approved or added; this is not yet a fully licensed open-source release.
+
 ## What works now
 
-- Responsive five-page vanilla HTML/CSS/JS shell, with distinct core and recruiting modules.
+- Responsive club workspace modules built with vanilla HTML/CSS/JS, including a new persistent Projects board.
 - Live frontend-to-backend reads: health, clubs, roster, sessions, drafts, member histories, rankings, and consent-filtered recruiter discovery. Skill search uses approved contribution evidence.
 - Explicit read-only fictional demo mode and an Atlas repository using the same response shape.
 - Atlas setup/seed commands, 11 collection validators, unique attendance index, ranking and history aggregation pipelines.
