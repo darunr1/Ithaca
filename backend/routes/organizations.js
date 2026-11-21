@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { httpError } from '../services/workspace.js';
+import { requireVerifiedMemberId } from '../auth/identity.js';
+import { requireClubMember, requireOfficer } from '../services/authorization.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const createClubInput = z.object({
@@ -16,16 +18,8 @@ const createRoleInput = z.object({
 
 export function organizationRoutes({ db, send }) {
   const router = Router();
-  const memberFor = req => db.collection('members').findOne({ id: req.memberId });
-  async function officer(req, clubId) {
-    const [club, actor] = await Promise.all([
-      db.collection('clubs').findOne({ id: clubId }),
-      memberFor(req)
-    ]);
-    if (!club || !actor?.clubIds?.includes(clubId)) throw httpError(404, 'NOT_FOUND', 'Club not found or inaccessible.');
-    if (!club.officerIds?.includes(actor.id)) throw httpError(403, 'OFFICER_REQUIRED', 'Only this club’s officers can manage these records.');
-    return { club, actor };
-  }
+  const memberFor = req => db.collection('members').findOne({ id: requireVerifiedMemberId(req) });
+  const officer = (req, clubId) => requireOfficer(req, db, clubId);
   router.post('/', async (req, res) => {
     const input = createClubInput.parse(req.body);
     const actor = await memberFor(req);
@@ -68,7 +62,10 @@ export function organizationRoutes({ db, send }) {
     });
     if (!invitation) throw httpError(404, 'INVITATION_NOT_FOUND', 'Invitation not found or already handled.');
     const actor = await memberFor(req);
-    if (!actor || actor.universityId !== invitation.universityId) throw httpError(403, 'UNIVERSITY_MISMATCH', 'The invitation belongs to a different university.');
+    const club = await db.collection('clubs').findOne({ id: invitation.clubId });
+    if (!actor || !club || club.universityId !== invitation.universityId || actor.universityId !== club.universityId)
+      throw httpError(404, 'INVITATION_NOT_FOUND', 'Invitation is no longer available.');
+    if (action === 'accept' && actor.clubIds?.includes(club.id)) throw httpError(409, 'ALREADY_MEMBER', 'You already belong to this club.');
     const result = await db.collection('clubInvitations').updateOne(
       { id: inviteId, invitedMemberId: req.memberId, status: 'pending' },
       { $set: { status: action === 'accept' ? 'accepted' : 'declined', respondedAt: new Date().toISOString() } }
@@ -116,8 +113,7 @@ export function organizationRoutes({ db, send }) {
 
   router.get('/:clubId/roster-stats', async (req, res) => {
     const clubId = id.parse(req.params.clubId);
-    const actor = await memberFor(req);
-    if (!actor?.clubIds?.includes(clubId)) throw httpError(404, 'NOT_FOUND', 'Club inaccessible.');
+    await requireClubMember(req, db, clubId);
     const [club, members, contributions, attendance] = await Promise.all([
       db.collection('clubs').findOne({ id: clubId }),
       db.collection('members').find({ clubIds: clubId }).toArray(),
@@ -190,11 +186,12 @@ export function organizationRoutes({ db, send }) {
   router.post('/:clubId/succession/:roleId/nominate', async (req, res) => {
     const clubId = id.parse(req.params.clubId);
     const roleId = id.parse(req.params.roleId);
-    const { actor } = await officer(req, clubId);
+    const { actor, club } = await officer(req, clubId);
     const { memberId } = z.object({ memberId: id }).strict().parse(req.body);
     const candidate = await db.collection('members').findOne({ id: memberId, clubIds: clubId });
     const role = await db.collection('successionRoles').findOne({ id: roleId, clubId });
-    if (!candidate || !role) throw httpError(404, 'NOT_FOUND', 'Role or candidate is unavailable.');
+    if (!candidate || !role || candidate.universityId !== club.universityId)
+      throw httpError(404, 'NOT_FOUND', 'Role or candidate is unavailable.');
     if (role.nominations?.some(n => n.memberId === memberId)) throw httpError(409, 'ALREADY_NOMINATED', 'Candidate already nominated.');
     const nomination = { memberId, nominatedBy: actor.id, createdAt: new Date().toISOString(), status: 'proposed' };
     const result = await db.collection('successionRoles').updateOne(
@@ -207,8 +204,7 @@ export function organizationRoutes({ db, send }) {
   router.post('/:clubId/succession/:roleId/respond', async (req, res) => {
     const clubId = id.parse(req.params.clubId), roleId = id.parse(req.params.roleId);
     const { action } = z.object({ action: z.enum(['accept', 'decline']) }).strict().parse(req.body);
-    const actor = await memberFor(req);
-    if (!actor?.clubIds?.includes(clubId)) throw httpError(404, 'NOT_FOUND', 'Club not found or inaccessible.');
+    const { actor } = await requireClubMember(req, db, clubId);
     const result = await db.collection('successionRoles').updateOne(
       { id: roleId, clubId, nominations: { $elemMatch: { memberId: actor.id, status: 'proposed' } } },
       { $set: { 'nominations.$.status': action === 'accept' ? 'accepted' : 'declined',
@@ -223,7 +219,8 @@ export function organizationRoutes({ db, send }) {
     const input = z.object({ memberId: id, outgoingOfficerId: id.optional() }).strict().parse(req.body);
     const candidate = await db.collection('members').findOne({ id: input.memberId, clubIds: clubId });
     const role = await db.collection('successionRoles').findOne({ id: roleId, clubId });
-    if (!candidate || !role) throw httpError(404, 'NOT_FOUND', 'Role or candidate not available.');
+    if (!candidate || !role || candidate.universityId !== club.universityId)
+      throw httpError(404, 'NOT_FOUND', 'Role or candidate not available.');
     if (!role.nominations?.some(n => n.memberId === candidate.id && n.status === 'accepted'))
       throw httpError(409, 'ACCEPTANCE_REQUIRED', 'The nominated student must accept before appointment.');
     if (input.outgoingOfficerId && !club.officerIds.includes(input.outgoingOfficerId))
@@ -242,7 +239,8 @@ export function organizationRoutes({ db, send }) {
     const update = { officerIds };
     if (input.outgoingOfficerId === club.ownerId) update.ownerId = candidate.id;
     const changed = await db.collection('clubs').updateOne(
-      { id: clubId, officerIds: actor.id }, [{ $set: update }]
+      { id: clubId, officerIds: actor.id, universityId: actor.universityId,
+        ...(input.outgoingOfficerId === club.ownerId ? { ownerId: club.ownerId } : {}) }, [{ $set: update }]
     );
     if (!changed.modifiedCount) throw httpError(409, 'CLUB_CHANGED', 'Club permissions changed before appointment; refresh and retry.');
     await db.collection('successionRoles').updateOne(
