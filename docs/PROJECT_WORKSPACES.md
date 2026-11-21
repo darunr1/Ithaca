@@ -41,7 +41,7 @@ All routes are under `/api/organizations/:clubId/projects`, use authenticated be
 | PATCH | `/:projectId/milestones/:milestoneId` | Change milestone (officer/lead) |
 | POST | `/:projectId/tasks` | Create task (officer/lead can assign club members; members may only self-assign) |
 | PATCH | `/:projectId/tasks/:taskId` | Officer/lead may edit task; assigned members may change only status and evidence URL |
-| POST | `/:projectId/updates` | Add attributed progress, decision, blocker or meeting note (club member) |
+| POST | `/:projectId/updates` | Add attributed progress, blocker or meeting note (club member); official decisions require an officer/lead |
 | GET | `/:projectId/handoff` | Export derived Markdown handoff summary |
 
 Example create:
