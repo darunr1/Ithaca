@@ -238,6 +238,8 @@ export function projectRoutes({ db, send }) {
     const access = await accessFor(req);
     const project = await projectFor(access, req.params.projectId);
     const input = createUpdate.parse(req.body ?? {});
+    // A decision reads as an official club record, so it requires a lead/officer.
+    if (input.type === 'decision') assertManager(access, project);
     const update = { id: 'project-update-' + randomUUID(), clubId: access.clubId,
       projectId: project.id, ...input, authorId: access.actor.id, createdAt: new Date().toISOString() };
     await db.collection('projectUpdates').insertOne(update);
