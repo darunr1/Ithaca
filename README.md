@@ -38,6 +38,17 @@ npm run ai:verify
 
 **Not implemented:** session or attendance writes, transactional multi-document audit writes, applications, live Bow matching, connection acceptance, OCR, or a registered domain. Planned API routes return HTTP 501. Disabled buttons and Bow's static example are labeled. Demo identities remain limited to explicit fictional local mode; production authorization uses verified Supabase identities and Atlas records.
 
+## Explore the populated sample workspace
+
+A new or empty workspace now has a **read-only sample experience** instead of an unhelpful blank screen:
+
+- Home summarizes **32 fictional members, 6 example clubs, 69 illustrative contributions and 21 sessions** across sample campuses.
+- Kleos Ledger shows per-club rosters, sample activity points and contribution histories. The Court compares club, university and global fictional rankings.
+- Bow shows three fictional officer roles and example candidate shortlists; its preview has no nomination or appointment actions.
+- Where a real workspace already has records, its live data remains separate. The relevant module provides **Explore populated demo** and **View real records** controls. When a new account has no club access, samples are labeled as examples rather than being inserted into the real club.
+
+Sample preview records live in `frontend/shared/sample-preview.js` and are **browser-only**; they do not create Supabase identities, update MongoDB Atlas, create verified engineering achievements or appear in recruiter discovery. Local `DATA_MODE=demo` and opt-in Atlas `_demo` seeding still use the separate fictional fixtures in `demo-data/fixtures.js`. For Athena's five fictional sample documents, use `npm run athene:samples`, or upload them to an authorized demo project using the documented Athena demo tooling.
+
 ## Connect MongoDB Atlas
 
 Create an Atlas cluster and database user, allow your development/hosting IP in Atlas Network Access, then set in `.env`:

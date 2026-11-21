@@ -1,14 +1,17 @@
 import { api } from '../shared/api.js';
 import { e } from '../shared/ui.js';
+import { sampleBowPage } from '../shared/sample-pages.js';
 
-const state = { clubId: '', flash: '' };
+const state = { clubId: '', flash: '', preview: null };
 export async function renderBow(input = {}) {
   if (input?.clubId) state.clubId = input.clubId;
+  if (typeof input?.preview === 'boolean') state.preview = input.preview;
+  if (state.preview === true) return sampleBowPage();
   if (input?.flash) state.flash = input.flash;
   const [{ data: clubs }, { data: me }] = await Promise.all([api('/clubs'), api('/auth/me')]);
   if (!state.clubId || !clubs.some(c => c.id === state.clubId)) state.clubId = clubs[0]?.id || '';
   const club = clubs.find(c => c.id === state.clubId);
-  if (!club) return '<div class="module-empty">Start or join a club before working on leadership succession.</div>';
+  if (!club) return state.preview === false ? '<div class="module-empty">Start or join a club before managing real leadership succession.</div><button type="button" data-bow-show-demo>Explore sample candidates</button>' : sampleBowPage();
   const isOfficer = Boolean(me.profile && club.officerIds.includes(me.profile.internalMemberId));
   if (!isOfficer) {
     const offers = await api('/organizations/succession-offers').then(r => r.data).catch(() => []);
@@ -16,7 +19,7 @@ export async function renderBow(input = {}) {
       <section class="module-panel"><div class="module-panel-head"><div><span>YOUR CLUB</span><h2>Leadership nominations</h2></div></div>
         ${offers.length ? offers.map(o => `<article class="bow-offer" data-offer-role="${e(o.roleId)}" data-offer-club="${e(o.clubId)}"><strong>${e(o.title)}</strong><p>${e(o.description)}</p><div><button data-offer-action="accept" type="button">Accept nomination</button><button data-offer-action="decline" type="button">Decline</button></div></article>`).join('') : '<p class="module-empty">There are no pending nominations for your account.</p>'}
         <p class="module-muted">A nomination requires your acceptance and officer approval. You do not gain permissions by accepting alone.</p>
-      </section><section class="module-panel"><h2>Officer access required</h2><p>Role planning and candidate shortlists are available to current officers only.</p></section></div>`;
+      </section><section class="module-panel"><h2>Officer access required</h2><p>Role planning and candidate shortlists are available to current officers only.</p><button type="button" data-bow-show-demo>Explore fictional succession examples</button></section></div>`;
   }
   const { data: succession } = await api(`/organizations/${encodeURIComponent(club.id)}/succession`);
   const roles = succession.roles || [];
@@ -40,6 +43,7 @@ export async function renderBow(input = {}) {
     <header class="module-hero bow-hero"><div><span class="module-kicker">BOW / OFFICER SUCCESSION</span><h1>Make the handoff count.</h1><p>Preserve the next generation of club leadership. Define roles, review verified work, and document successor nominations before the team changes hands.</p></div><div class="module-hero-symbol" aria-hidden="true">↗</div></header>
     <div class="module-heading"><div><span>LEADERSHIP CONTINUITY</span><h2>Succession planning</h2></div><p>Officer-controlled · No automated appointment</p></div>
     ${flash}
+    <div class="module-live-preview-control"><span>Live officer workspace · real member data only</span><button type="button" data-bow-show-demo>Explore populated demo</button></div>
     <div class="module-two-col">
       <section class="module-panel bow-create-panel"><div class="module-panel-head"><div><span>BUILD YOUR HANDOFF PLAN</span><h2>Define an officer role</h2></div></div>
         <form id="bow-role-form" class="module-form">
@@ -62,6 +66,8 @@ export async function renderBow(input = {}) {
   </div>`;
 }
 export function bindBow(root, rerender) {
+  root.querySelector('[data-bow-show-demo]')?.addEventListener('click', () => rerender({ preview: true }));
+  root.querySelector('[data-sample-show-live]')?.addEventListener('click', () => rerender({ preview: false }));
   root.querySelectorAll('[data-offer-action]').forEach(button => button.addEventListener('click', async () => {
     const card = button.closest('[data-offer-role]');
     button.disabled = true;

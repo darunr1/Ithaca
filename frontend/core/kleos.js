@@ -51,9 +51,12 @@ function requestPanel(club, requests) {
 export async function renderKleos(argument) {
   if (typeof argument === 'string') state.range = argument;
   else if (argument && typeof argument === 'object') Object.assign(state, argument);
-  const [{ data: profile }, { data: clubs }] = await Promise.all([api(`/members/${encodeURIComponent(currentMemberId())}`), api('/clubs')]);
+  const { data: clubs } = await api('/clubs');
+  if (!clubs.length) return state.preview === false
+    ? '<div class="module-empty">Join or create an engineering organization to begin tracking real contribution records. Use the demo preview to explore examples.</div><button type="button" data-sample-show-demo>Explore populated demo</button>'
+    : sampleLedgerPage(state.sampleClubId);
+  const { data: profile } = await api(`/members/${encodeURIComponent(currentMemberId())}`);
   const me = profile.member;
-  if (!clubs.length) return '<div class="module-empty">Join or create an engineering organization to begin tracking contribution records.</div>';
   if (!state.clubId || !clubs.some(c => c.id === state.clubId)) state.clubId = me.clubIds[0] || clubs[0].id;
   const club = clubs.find(c => c.id === state.clubId) || clubs[0];
   const officer = club.officerIds.includes(me.id);

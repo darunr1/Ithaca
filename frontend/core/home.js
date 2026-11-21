@@ -1,9 +1,10 @@
 import { api } from '../shared/api.js';
 import { e } from '../shared/ui.js';
+import { sampleHomePage } from '../shared/sample-pages.js';
 
 export async function renderHome() {
   const [{ data: clubs }, { data: me }] = await Promise.all([api('/clubs'), api('/auth/me')]);
-  if (!clubs.length) return '<div class="module-empty">Your club access is being set up. Return to your student profile to create or join an organization.</div>';
+  if (!clubs.length) return sampleHomePage();
   const active = clubs[0];
   const { data: rankings } = await api(`/clubs/${encodeURIComponent(active.id)}/rankings?range=all`);
   let stats;
@@ -37,6 +38,7 @@ export async function renderHome() {
     <div class="module-heading"><div><span>OVERVIEW / REAL ACTIVITY</span><h2>Team at a glance</h2></div><p>Everything below comes from your real Atlas records.</p></div>
     <div class="module-metrics"><article><span>Club members</span><strong>${stats.members.length}</strong><small>Current roster</small></article><article><span>Approved contributions</span><strong>${count}</strong><small>Recorded, officer-approved</small></article><article><span>Activity points</span><strong>${total}</strong><small>Contributions and attendance</small></article><article><span>Ranked members</span><strong>${rankings.rows.length}</strong><small>Members with activity</small></article></div>
     ${invitationPanel}
+    ${count === 0 && total === 0 ? '<section class="module-panel"><div class="module-panel-head"><div><span>NEW WORKSPACE</span><h2>Explore a populated example</h2></div><span class="module-sample-label">DEMO DATA</span></div><p>Your club has no approved activity yet. The fictional Ledger, Court and Bow previews show how the product works without creating fake records in your club.</p><a href="#kleos" class="module-text-link">Explore the sample roster and contributions →</a></section>' : ''}
     <div class="module-two-col">
       <section class="module-panel"><div class="module-panel-head"><div><span>PEOPLE</span><h2>Your team</h2></div><a href="#kleos">Open ledger →</a></div>${rows}</section>
       <section class="module-panel"><div class="module-panel-head"><div><span>WORKSPACE TOOLS</span><h2>Continue your work</h2></div></div>

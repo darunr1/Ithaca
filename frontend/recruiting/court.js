@@ -27,7 +27,7 @@ export async function renderCourt(input = {}) {
   const clubRows = clubRanks?.rows || [];
   const schoolRows = schoolRanks?.rows || [];
   const globalRows = leaderboard.rows || [];
-  const sampleMode = state.preview === true || (state.preview === null && Boolean(me.profile) && !clubRows.length && !schoolRows.length && !globalRows.length);
+  const sampleMode = state.preview === true || (state.preview === null && !clubRows.length && !schoolRows.length && !globalRows.length);
   if (sampleMode) return sampleCourtPage({ mode: state.mode, clubId: state.sampleClubId, universityId: state.sampleUniversityId });
   const rows = state.mode === 'clubs' ? clubRows : state.mode === 'university' ? schoolRows : globalRows;
   const metric = state.mode === 'clubs' ? 'points' : 'contributions';
