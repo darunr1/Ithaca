@@ -131,6 +131,10 @@ test('real clubs, invitations, roster metrics and two-party officer succession',
   assert.equal((await call('bob', `/organizations/${clubId}/invitations`)).status, 404); // Do not reveal inaccessible clubs.
   assert.equal((await call('outsider', `/organizations/${clubId}/invitations`)).status, 404);
   assert.equal((await call('bob', '/organizations/invitations')).data.data.length, 1);
+  // An invitation cannot grant access to a club that has since changed universities.
+  await db.collection('clubs').updateOne({ id: clubId }, { $set: { universityId: 'uni-b' } });
+  assert.equal((await call('bob', `/organizations/invitations/${inviteId}/respond`, { action:'accept' })).status, 404);
+  await db.collection('clubs').updateOne({ id: clubId }, { $set: { universityId: 'uni-a' } });
   assert.equal((await call('outsider', `/organizations/invitations/${inviteId}/respond`, { action:'accept' })).status, 404);
   assert.equal((await call('bob', `/organizations/invitations/${inviteId}/respond`, { action:'accept' })).status, 200);
   assert.equal((await call('bob', '/clubs')).data.data.length, 1);
@@ -142,6 +146,11 @@ test('real clubs, invitations, roster metrics and two-party officer succession',
   });
   assert.equal(role.status, 201);
   const roleId = role.data.data.role.id;
+  // Forged clubIds alone must not allow appointing a student from another university.
+  await db.collection('members').updateOne({ id: 'outsider' }, { $set: { clubIds: [clubId] } });
+  assert.equal((await call('alice', `/organizations/${clubId}/succession/${roleId}/nominate`, { memberId: 'outsider' })).status, 404);
+  assert.equal((await call('alice', `/organizations/${clubId}/succession/${roleId}/appoint`, { memberId: 'outsider' })).status, 404);
+  await db.collection('members').updateOne({ id: 'outsider' }, { $set: { clubIds: [] } });
   assert.equal((await call('bob', `/organizations/${clubId}/succession`)).status, 403);
   assert.equal((await call('bob', `/organizations/${clubId}/succession/${roleId}/appoint`, { memberId: 'bob' })).status, 403);
   assert.equal((await call('bob', `/organizations/${clubId}/invitations`, { memberId: 'outsider' })).status, 403);
