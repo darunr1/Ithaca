@@ -80,6 +80,14 @@ function detailPage(detail, clubs, isOfficer, roster) {
     '<label>Notes<textarea name="content" rows="3" minlength="5" maxlength="3000" required placeholder="What changed, what was decided, or what is blocked?"></textarea></label>' +
     '<button type="submit">Save update</button></form>';
 
+  const leadControls = isOfficer ? '<details class="module-panel project-lead-settings"><summary>Manage project leads</summary>' +
+    '<form id="project-leads-form" class="project-form"><p>Project leads may create milestones and manage project tasks. Only officers can change leads.</p>' +
+    '<div class="project-lead-options">' + roster.map(member =>
+      '<label class="project-lead-option"><input type="checkbox" name="leadIds" value="' + e(member.id) + '"' +
+      (project.leadIds.includes(member.id) ? ' checked' : '') + '> ' + e(member.name) + '</label>'
+    ).join('') + '</div><button type="submit">Save project leads</button></form></details>' : '';
+  const newProjectControl = isOfficer ? '<details class="module-panel project-create-more"><summary>Create another project</summary>' +
+    projectCreateForm(isOfficer) + '</details>' : '';
   const projectStatus = canManage ? statusSelect(project.status, ['active', 'on_hold', 'completed', 'archived'],
     'data-project-status="true"') : '<span class="project-pill">' + e(project.status) + '</span>';
 
@@ -99,7 +107,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
     '<div class="project-progress"><span style="width:' + summary.completionPercent + '%"></span></div>' +
     '<p class="project-muted">Target: ' + formatDate(project.targetDate) + ' · ' +
     (project.leadIds.length ? 'Leads: ' + project.leadIds.map(id => e(rosterMap.get(id)?.name || 'Member')).join(', ') : 'No leads assigned') +
-    '</p></section>' +
+    '</p></section>' + leadControls + newProjectControl +
     '<div class="project-section-heading"><h2>Task board</h2><small>' + statusCount.map(s => s.count + ' ' + labels[s.status]).join(' · ') + '</small></div>' +
     '<div class="project-board">' + board + '</div>' +
     '<div class="project-two-column"><section class="module-panel">' + createTask + '</section>' +
@@ -108,6 +116,16 @@ function detailPage(detail, clubs, isOfficer, roster) {
     '<div class="project-update-list">' + updateRows + '</div>' + updateForm + '</section>' +
     '<p class="module-disclaimer">This workspace contains your real club records. Updates are attributed to authenticated members. Completion is calculated from task status, not an AI estimate.</p>' +
     '</div>';
+}
+
+
+function projectCreateForm(isOfficer) {
+  if (!isOfficer) return '';
+  return '<form id="project-create-form" class="project-form"><h3>Create a project</h3>' +
+    '<label>Name<input name="name" required minlength="3" maxlength="120" placeholder="e.g. Solar Vehicle Telemetry"></label>' +
+    '<label>Description<textarea name="description" rows="3" maxlength="3000" placeholder="What is this project trying to accomplish?"></textarea></label>' +
+    '<label>Target date<input name="targetDate" type="date"></label>' +
+    '<button type="submit">Create project</button></form>';
 }
 
 function clubPicker(clubs) {
@@ -136,11 +154,7 @@ export async function renderProjects(input = {}) {
   state.projectList = list.projects;
   if (!list.projects.some(project => project.id === state.projectId)) state.projectId = list.projects[0]?.id || '';
   const picker = clubPicker(clubs);
-  const createForm = isOfficer ? '<form id="project-create-form" class="project-form"><h3>Create a project</h3>' +
-    '<label>Name<input name="name" required minlength="3" maxlength="120" placeholder="e.g. Solar Vehicle Telemetry"></label>' +
-    '<label>Description<textarea name="description" rows="3" maxlength="3000" placeholder="What is this project trying to accomplish?"></textarea></label>' +
-    '<label>Target date<input name="targetDate" type="date"></label>' +
-    '<button type="submit">Create project</button></form>' : '';
+  const createForm = projectCreateForm(isOfficer);
 
   if (!state.projectId) return '<div class="module-page module-projects"><header class="module-hero"><div><span class="module-kicker">PROJECTS</span><h1>Build together. Remember everything.</h1><p>Projects bring tasks, progress and decisions into one shared workspace.</p></div></header>' +
     picker + flash() + '<section class="module-panel"><h2>No projects yet</h2><p>Club officers can create your first project here.</p>' +
@@ -173,6 +187,11 @@ export function bindProjects(root, rerender) {
       } });
       state.projectId = response.project.id;
     }, 'Project created.');
+  });
+  root.querySelector('#project-leads-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const leadIds = new FormData(event.currentTarget).getAll('leadIds');
+    save(() => api(projectPath(), { method: 'PATCH', body: { leadIds } }), 'Project leads updated.');
   });
   root.querySelector('#project-task-form')?.addEventListener('submit', event => {
     event.preventDefault();
