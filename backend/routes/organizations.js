@@ -186,11 +186,11 @@ export function organizationRoutes({ db, send }) {
   router.post('/:clubId/succession/:roleId/nominate', async (req, res) => {
     const clubId = id.parse(req.params.clubId);
     const roleId = id.parse(req.params.roleId);
-    const { actor } = await officer(req, clubId);
+    const { actor, club } = await officer(req, clubId);
     const { memberId } = z.object({ memberId: id }).strict().parse(req.body);
     const candidate = await db.collection('members').findOne({ id: memberId, clubIds: clubId });
     const role = await db.collection('successionRoles').findOne({ id: roleId, clubId });
-    if (!candidate || !role || candidate.universityId !== (await db.collection('clubs').findOne({ id: clubId }))?.universityId)
+    if (!candidate || !role || candidate.universityId !== club.universityId)
       throw httpError(404, 'NOT_FOUND', 'Role or candidate is unavailable.');
     if (role.nominations?.some(n => n.memberId === memberId)) throw httpError(409, 'ALREADY_NOMINATED', 'Candidate already nominated.');
     const nomination = { memberId, nominatedBy: actor.id, createdAt: new Date().toISOString(), status: 'proposed' };
