@@ -86,3 +86,17 @@ test('replica set: project and milestone HTTP mutations roll back on audit valid
     assert.deepEqual(await snapshot(), before);
   }
 });
+
+test('replica set: task and decision HTTP mutations roll back on audit validation failure', { skip: !uri, timeout: 60000 }, async t => {
+  const { call, path, taskPath, snapshot, rejectAudits } = await projectServer(t);
+  await rejectAudits();
+  const before = await snapshot();
+  for (const [method, suffix, body] of [
+    ['POST', path + '/tasks', { title: 'Rejected task' }],
+    ['PATCH', taskPath, { status: 'done' }],
+    ['POST', path + '/updates', { type: 'decision', content: 'Rejected decision content.' }]
+  ]) {
+    assert.equal((await call(method, suffix, body)).status, 500);
+    assert.deepEqual(await snapshot(), before);
+  }
+});

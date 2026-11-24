@@ -28,4 +28,8 @@ PR 07 introduces infrastructure only; endpoint migration follows.
 
 Project create/edit and milestone create/edit now perform authorization and validation reads, primary write, audit insert and parent timestamp update in one session. The response is sent only after commit. Missing parent matches abort. The fault tests for these four routes now assert full rollback; task/update routes retain baseline expectations until PR 09. The fixture models staged writes and abort; a real replica-set integration check is still recommended.
 
+## Task and decision migration (PR 09)
+
+Task creation/edit and progress, decision, blocker and meeting entries now use the same session as their authorization and validation reads, audit and parent timestamp. There is no nontransactional mutation path in this router. All seven mutation paths now assert rollback on audit, timestamp or primary-write failure. Invalid assignees, milestones and decisions must leave project data unchanged. This does not provide HTTP request idempotency across independent requests or protect other routers.
+
 CI starts an isolated MongoDB replica set and exercises real transaction rollback; the production Atlas connection is not used for these tests.
