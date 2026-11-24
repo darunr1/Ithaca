@@ -24,7 +24,7 @@ function database() {
     return Array.isArray(value) ? value.includes(expected) : value === expected;
   });
   const collection = name => ({
-    async findOne(where, { session } = {}) { return structuredClone(list(name, session).find(row => matches(row, where)) ?? null); },
+    async findOne(where, { session } = {}) { if (session) await session.ready; return structuredClone(list(name, session).find(row => matches(row, where)) ?? null); },
     find(where) {
       let found = list(name).filter(row => matches(row, where));
       return {
@@ -37,8 +37,9 @@ function database() {
         async toArray() { return structuredClone(found); }
       };
     },
-    async insertOne(row, { session } = {}) { failWrite(name, 'insertOne', row); list(name, session).push(structuredClone(row)); return { insertedId: row.id }; },
+    async insertOne(row, { session } = {}) { if (session) await session.ready; failWrite(name, 'insertOne', row); list(name, session).push(structuredClone(row)); return { insertedId: row.id }; },
     async updateOne(where, change, opts = {}) {
+      if (opts.session) await opts.session.ready;
       failWrite(name, 'updateOne', change);
       let row = list(name, opts.session).find(row => matches(row, where));
       if (!row && opts.upsert) {
@@ -69,22 +70,26 @@ function database() {
   // concurrent request tests deterministic; this is not a MongoDB simulator.
   let tail = Promise.resolve();
   registerTransactionClient(db, { startSession() {
+    let ready, release, active = false;
+    const clear = session => { session.rows = undefined; active = false; release?.(); };
     return {
-      async withTransaction(work) {
+      startTransaction() {
+        active = true;
         const previous = tail;
-        let release;
         tail = new Promise(resolve => { release = resolve; });
-        await previous;
-        try {
-          this.rows = structuredClone(rows);
-          const result = await work();
-          for (const name of ['clubProjects', 'projectMilestones', 'projectTasks', 'projectUpdates', 'projectAuditLogs']) {
-            if (this.rows.has(name)) rows.set(name, this.rows.get(name));
-          }
-          return result;
-        } finally { this.rows = undefined; release(); }
+        ready = previous.then(() => { this.rows = structuredClone(rows); });
       },
-      async endSession() {}
+      inTransaction() { return active; },
+      get ready() { return ready; },
+      async commitTransaction() {
+        await ready;
+        for (const name of ['clubProjects', 'projectMilestones', 'projectTasks', 'projectUpdates', 'projectAuditLogs']) {
+          if (this.rows.has(name)) rows.set(name, this.rows.get(name));
+        }
+        clear(this);
+      },
+      async abortTransaction() { await ready; clear(this); },
+      async endSession() { if (active) await this.abortTransaction(); }
     };
   } });
   return db;
