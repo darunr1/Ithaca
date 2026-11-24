@@ -21,6 +21,7 @@ function database() {
   };
   const matches = (row, where) => Object.entries(where || {}).every(([key, expected]) => {
     const value = row[key];
+    if (expected && typeof expected === 'object' && '$exists' in expected) return (key in row) === expected.$exists;
     return Array.isArray(value) ? value.includes(expected) : value === expected;
   });
   const collection = name => ({
@@ -174,10 +175,10 @@ test('project features require verified identity, enforce club isolation and per
   assert.equal((await call('bob', base + '/' + project.id + '/tasks', { method: 'POST',
     body: { title: 'Assign to an officer', assigneeId: 'alice' } })).status, 403);
   assert.equal((await call('bob', base + '/' + project.id + '/tasks/' + taskId,
-    { method: 'PATCH', body: { title: 'Unauthorized change' } })).status, 403);
+    { method: 'PATCH', body: { title: 'Unauthorized change', expectedVersion: 0 } })).status, 403);
 
   const done = await call('bob', base + '/' + project.id + '/tasks/' + taskId,
-    { method: 'PATCH', body: { status: 'done', evidenceUrl: 'https://example.com/evidence' } });
+    { method: 'PATCH', body: { status: 'done', evidenceUrl: 'https://example.com/evidence', expectedVersion: 0 } });
   assert.equal(done.status, 200);
   const memberTask = await call('bob', base + '/' + project.id + '/tasks',
     { method: 'POST', body: { title: 'Document parser integration' } });
@@ -258,7 +259,7 @@ const mutationCases = [
   ['milestone create', 'projectMilestones', 'POST', '/project/milestones', { title: 'Second milestone' }, true],
   ['milestone edit', 'projectMilestones', 'PATCH', '/project/milestones/milestone', { status: 'done' }, true],
   ['task create', 'projectTasks', 'POST', '/project/tasks', { title: 'Second task' }, true],
-  ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done' }, true],
+  ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done', expectedVersion: 0 }, true],
   ['decision create', 'projectUpdates', 'POST', '/project/updates', { type: 'decision', content: 'Record a new decision.' }, true]
 ];
 
@@ -317,10 +318,10 @@ test('rejected task and decision mutations leave all project records unchanged',
   const names = ['clubProjects', 'projectTasks', 'projectUpdates', 'projectAuditLogs'];
   const before = names.map(snapshot);
   const invalidAssignee = await call('alice', projectPath + '/tasks/' + taskId,
-    { method: 'PATCH', body: { assigneeId: 'outsider' } });
+    { method: 'PATCH', body: { assigneeId: 'outsider', expectedVersion: 0 } });
   assert.equal(invalidAssignee.status, 422);
   const invalidMilestone = await call('alice', projectPath + '/tasks/' + taskId,
-    { method: 'PATCH', body: { milestoneId: 'missing' } });
+    { method: 'PATCH', body: { milestoneId: 'missing', expectedVersion: 0 } });
   assert.equal(invalidMilestone.status, 422);
   const invalidDecision = await call('alice', projectPath + '/updates',
     { method: 'POST', body: { type: 'decision', content: 'x' } });
@@ -339,3 +340,45 @@ for (const [name, collection, method, suffix, body] of mutationCases) {
     assert.deepEqual(names.map(snapshot), before);
   });
 }
+
+test('competing task edits commit once and return 409 for the stale version', async t => {
+  const { call, snapshot, projectPath, taskId } = await mutationFixture(t);
+  const taskPath = projectPath + '/tasks/' + taskId;
+  const audit = snapshot('projectAuditLogs').length;
+  const detail = await call('alice', projectPath);
+  const initial = detail.data.data.tasks.find(task => task.id === taskId);
+  assert.equal(initial.version, 0);
+  const results = await Promise.all(['done', 'blocked'].map(status =>
+    call('alice', taskPath, { method: 'PATCH', body: { status, expectedVersion: initial.version } })));
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  const winner = results.find(result => result.status === 200);
+  const loser = results.find(result => result.status === 409);
+  assert.equal(loser.data.error.code, 'TASK_CHANGED');
+  assert.equal(winner.data.data.version, 1);
+  const stored = snapshot('projectTasks').find(task => task.id === taskId);
+  assert.equal(stored.status, winner.data.data.status);
+  assert.equal(stored.version, 1);
+  assert.equal(snapshot('projectAuditLogs').length, audit + 1);
+
+  const before = snapshot('projectTasks');
+  for (const body of [{ status: 'todo' }, { status: 'todo', expectedVersion: -1 },
+    { status: 'todo', expectedVersion: '1' }, { expectedVersion: 1 }]) {
+    assert.equal((await call('alice', taskPath, { method: 'PATCH', body })).status, 400);
+  }
+  assert.deepEqual(snapshot('projectTasks'), before);
+  assert.equal(snapshot('projectAuditLogs').length, audit + 1);
+  const retry = await call('alice', taskPath, { method: 'PATCH', body: { status: 'todo', expectedVersion: 1 } });
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.data.version, 2);
+});
+
+test('legacy tasks without stored version are exposed as zero and upgraded on first edit', async t => {
+  const { db, call, snapshot, projectPath, taskId } = await mutationFixture(t);
+  delete db.rows.get('projectTasks').find(task => task.id === taskId).version;
+  const detail = await call('alice', projectPath);
+  assert.equal(detail.data.data.tasks.find(task => task.id === taskId).version, 0);
+  const path = projectPath + '/tasks/' + taskId;
+  assert.equal((await call('alice', path, { method: 'PATCH', body: { status: 'done', expectedVersion: 0 } })).status, 200);
+  assert.equal((await call('alice', path, { method: 'PATCH', body: { status: 'blocked', expectedVersion: 0 } })).status, 409);
+  assert.equal(snapshot('projectTasks').find(task => task.id === taskId).version, 1);
+});

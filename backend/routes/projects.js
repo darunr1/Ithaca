@@ -39,6 +39,7 @@ const createTask = z.object({
   evidenceUrl: evidenceUrl.default(null)
 }).strict();
 const editTask = z.object({
+  expectedVersion: z.number().int().min(0).max(2147483646),
   title: text(3, 150).optional(), description: text(0, 3000).optional(),
   status: taskStatus.optional(), assigneeId: id.nullable().optional(),
   milestoneId: id.nullable().optional(), dueDate: date.nullable().optional(),
@@ -51,6 +52,7 @@ const createUpdate = z.object({
 
 const clean = ({ _id, ...rest }) => rest;
 const newest = rows => rows.map(clean);
+const cleanTask = task => clean({ ...task, version: task.version ?? 0 });
 const requirePatch = body => {
   if (!Object.keys(body).length) throw httpError(400, 'EMPTY_PATCH', 'Provide at least one field to update.');
   return body;
@@ -149,7 +151,7 @@ export function projectRoutes({ db, send }) {
     ]);
     const completed = tasks.filter(task => task.status === 'done').length;
     send(res, {
-      project: clean(project), milestones: newest(milestones), tasks: newest(tasks), updates: newest(updates),
+      project: clean(project), milestones: newest(milestones), tasks: tasks.map(cleanTask), updates: newest(updates),
       summary: { totalTasks: tasks.length, completedTasks: completed, blockedTasks: tasks.filter(task => task.status === 'blocked').length,
         completionPercent: tasks.length ? Math.round(100 * completed / tasks.length) : 0 },
       permissions: { canManage: access.isOfficer || (project.leadIds || []).includes(access.actor.id), actorId: access.actor.id }
@@ -211,10 +213,10 @@ export function projectRoutes({ db, send }) {
     await milestoneInProject(input.milestoneId, access, project, session);
     const now = new Date().toISOString();
     const task = { id: 'task-' + randomUUID(), clubId: access.clubId, projectId: project.id,
-      ...input, assigneeId, createdBy: access.actor.id, createdAt: now, updatedAt: now };
+      ...input, assigneeId, createdBy: access.actor.id, createdAt: now, updatedAt: now, version: 0 };
     await db.collection('projectTasks').insertOne(task, { session });
     await changeLog(access, project, 'task.created', task.id, session);
-    return { task: clean(task) };
+    return { task: cleanTask(task) };
   }, 201));
 
   router.patch('/:clubId/projects/:projectId/tasks/:taskId', mutate(async (req, session) => {
@@ -226,7 +228,8 @@ export function projectRoutes({ db, send }) {
     }, { session });
     if (!task) throw httpError(404, 'NOT_FOUND', 'Task not found.');
     const canManage = access.isOfficer || (project.leadIds || []).includes(access.actor.id);
-    const patch = requirePatch(editTask.parse(req.body ?? {}));
+    const { expectedVersion, ...fields } = editTask.parse(req.body ?? {});
+    const patch = requirePatch(fields);
     if (!canManage) {
       if (task.assigneeId !== access.actor.id) throw httpError(403, 'TASK_PERMISSION_REQUIRED', 'Only assigned members can update this task.');
       if (Object.keys(patch).some(key => !['status', 'evidenceUrl'].includes(key))) {
@@ -235,13 +238,20 @@ export function projectRoutes({ db, send }) {
     }
     if ('assigneeId' in patch) await memberInClub(patch.assigneeId, access.clubId, session);
     if ('milestoneId' in patch) await milestoneInProject(patch.milestoneId, access, project, session);
+    const currentVersion = task.version ?? 0;
+    if (currentVersion !== expectedVersion) {
+      throw httpError(409, 'TASK_CHANGED', 'The task changed. Refresh and retry.');
+    }
     const filter = { id: taskId, clubId: access.clubId, projectId: project.id,
+      version: task.version === undefined ? { $exists: false } : expectedVersion,
       ...(canManage ? {} : { assigneeId: access.actor.id }) };
+    const version = expectedVersion + 1;
+    const updatedAt = new Date().toISOString();
     const result = await db.collection('projectTasks').updateOne(filter,
-      { $set: { ...patch, updatedAt: new Date().toISOString() } }, { session });
-    if (!result.matchedCount) throw httpError(409, 'TASK_CHANGED', 'The task assignment changed. Refresh and retry.');
+      { $set: { ...patch, updatedAt, version } }, { session });
+    if (!result.matchedCount) throw httpError(409, 'TASK_CHANGED', 'The task changed. Refresh and retry.');
     await changeLog(access, project, 'task.updated', taskId, session);
-    return { taskId, ...patch };
+    return { taskId, ...patch, version, updatedAt };
   }));
 
   router.post('/:clubId/projects/:projectId/updates', mutate(async (req, session) => {

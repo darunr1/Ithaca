@@ -31,3 +31,7 @@ Project create/edit and milestone create/edit now perform authorization and vali
 ## Task and decision migration (PR 09)
 
 Task creation/edit and progress, decision, blocker and meeting entries now use the same session as their authorization and validation reads, audit and parent timestamp. There is no nontransactional mutation path in this router. All seven mutation paths now assert rollback on audit, timestamp or primary-write failure. Invalid assignees, milestones and decisions must leave project data unchanged. This does not provide HTTP request idempotency across independent requests or protect other routers.
+
+## Optimistic task concurrency (PR 10)
+
+Task creates and project detail responses expose integer version (initially 0). Legacy tasks without the field are treated as version 0 and upgraded on first successful edit, without a bulk migration. PATCH task requires expectedVersion from the last read; missing or malformed versions are 400. A stale revision returns 409 TASK_CHANGED without any write or audit; a scoped conditional filter matches the stored version (or absent field for legacy) and preserves assignee constraints. The version increments in the same transaction as the patch, parent timestamp and audit. Clients must refresh after a conflict rather than automatically replay stale edits. The task board sends the rendered revision and refreshes on 409. Other project/milestone edits do not yet enforce client revisions.

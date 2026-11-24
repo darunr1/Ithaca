@@ -32,7 +32,7 @@ function taskCard(task, roster, canEdit) {
   const member = roster.get(task.assigneeId);
   const editable = canEdit || task.assigneeId === state.actorId;
   const select = editable
-    ? statusSelect(task.status, statuses, 'data-project-task-status="' + e(task.id) + '"')
+    ? statusSelect(task.status, statuses, 'data-project-task-status="' + e(task.id) + '" data-task-version="' + e(task.version) + '"')
     : '<span class="project-pill project-' + e(task.status) + '">' + e(labels[task.status]) + '</span>';
   const evidence = task.evidenceUrl
     ? '<a href="' + e(task.evidenceUrl) + '" target="_blank" rel="noopener noreferrer">View evidence</a>' : '';
@@ -174,7 +174,10 @@ export function bindProjects(root, rerender) {
   const save = async (operation, message) => {
     feedback('Saving…');
     try { await operation(); rerender({ flash: message }); }
-    catch (error) { feedback(error.message || 'Unable to save changes.'); }
+    catch (error) {
+      if (error.code === 'TASK_CHANGED') rerender({ flash: 'Task changed elsewhere. Latest board loaded; review and retry.' });
+      else feedback(error.message || 'Unable to save changes.');
+    }
   };
   root.querySelector('#projects-club-picker')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
   root.querySelector('#project-picker')?.addEventListener('change', event => rerender({ projectId: event.target.value }));
@@ -217,7 +220,7 @@ export function bindProjects(root, rerender) {
     save(() => api(projectPath(), { method: 'PATCH', body: { status: event.target.value } }), 'Project status updated.'));
   root.querySelectorAll('[data-project-task-status]').forEach(select => select.addEventListener('change', event =>
     save(() => api(projectPath() + '/tasks/' + enc(select.dataset.projectTaskStatus), {
-      method: 'PATCH', body: { status: event.target.value }
+      method: 'PATCH', body: { status: event.target.value, expectedVersion: Number(select.dataset.taskVersion) }
     }), 'Task status updated.')));
   root.querySelectorAll('[data-project-milestone-status]').forEach(select => select.addEventListener('change', event =>
     save(() => api(projectPath() + '/milestones/' + enc(select.dataset.projectMilestoneStatus), {
