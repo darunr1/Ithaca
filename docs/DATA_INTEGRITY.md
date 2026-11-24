@@ -17,3 +17,9 @@ If the primary write fails, the audit helper is not reached. If the audit or tim
 The fault-injection tests intentionally assert existing partial writes for audit and timestamp failure, rather than introducing red CI. They will be changed to assert rollback as each endpoint migrates. The in-memory fixture models write failure deterministically; it is not a MongoDB integration test.
 
 Target: one session/transaction for authorization reads, primary mutation, audit and timestamp; no response until commit; no nontransactional fallback. Task edits additionally require a client revision and a scoped compare-and-set.
+
+## Transaction infrastructure
+
+Supabase/Atlas mode requires a session-capable replica set (including a single-node development replica set) or sharded cluster. Standalone mongod is not supported. Startup verifies the hello topology before registering the MongoClient. The shared helper uses the MongoDB driver's withTransaction retry semantics and a 10-second client-side timeout, snapshot reads and majority writes. Each session is closed in finally. Callbacks may be retried; do not send responses or perform external side effects inside them. All operations must receive the session and run sequentially. An unknown commit outcome is not proof of rollback; do not automatically replay a create from the HTTP layer.
+
+PR 07 introduces infrastructure only; endpoint migration follows.
