@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../backend/app.js';
 import { readConfig } from '../backend/config.js';
+import { registerTransactionClient } from '../backend/services/transactions.js';
 import { definitions, indexes } from '../database/definitions.js';
 
 function database() {
@@ -13,16 +14,17 @@ function database() {
       throw new Error('Injected write failure');
     }
   }
-  const list = name => {
-    if (!rows.has(name)) rows.set(name, []);
-    return rows.get(name);
+  const list = (name, session) => {
+    const storage = session?.rows || rows;
+    if (!storage.has(name)) storage.set(name, []);
+    return storage.get(name);
   };
   const matches = (row, where) => Object.entries(where || {}).every(([key, expected]) => {
     const value = row[key];
     return Array.isArray(value) ? value.includes(expected) : value === expected;
   });
   const collection = name => ({
-    async findOne(where) { return list(name).find(row => matches(row, where)) ?? null; },
+    async findOne(where, { session } = {}) { if (session) await session.ready; return structuredClone(list(name, session).find(row => matches(row, where)) ?? null); },
     find(where) {
       let found = list(name).filter(row => matches(row, where));
       return {
@@ -35,13 +37,14 @@ function database() {
         async toArray() { return structuredClone(found); }
       };
     },
-    async insertOne(row) { failWrite(name, 'insertOne', row); list(name).push(structuredClone(row)); return { insertedId: row.id }; },
+    async insertOne(row, { session } = {}) { if (session) await session.ready; failWrite(name, 'insertOne', row); list(name, session).push(structuredClone(row)); return { insertedId: row.id }; },
     async updateOne(where, change, opts = {}) {
+      if (opts.session) await opts.session.ready;
       failWrite(name, 'updateOne', change);
-      let row = list(name).find(row => matches(row, where));
+      let row = list(name, opts.session).find(row => matches(row, where));
       if (!row && opts.upsert) {
         row = structuredClone(change.$setOnInsert || where);
-        list(name).push(row);
+        list(name, opts.session).push(row);
       }
       if (!row) return { matchedCount: 0, modifiedCount: 0 };
       Object.assign(row, change.$set || {});
@@ -62,7 +65,34 @@ function database() {
     list('userProfiles').push({ ...member, id: 'profile-' + name, internalMemberId: name,
       authProvider: 'supabase', authProviderUserId: name, role: 'member', onboarded: true });
   }
-  return { rows, collection, failNextWrite(name, operation, when) { fault = { name, operation, when }; }, async command() { return { ok: 1 }; } };
+  const db = { rows, collection, failNextWrite(name, operation, when) { fault = { name, operation, when }; }, async command() { return { ok: 1 }; } };
+  // Model staged writes and abort in the fixture. A serialized queue makes
+  // concurrent request tests deterministic; this is not a MongoDB simulator.
+  let tail = Promise.resolve();
+  registerTransactionClient(db, { startSession() {
+    let ready, release, active = false;
+    const clear = session => { session.rows = undefined; active = false; release?.(); };
+    return {
+      startTransaction() {
+        active = true;
+        const previous = tail;
+        tail = new Promise(resolve => { release = resolve; });
+        ready = previous.then(() => { this.rows = structuredClone(rows); });
+      },
+      inTransaction() { return active; },
+      get ready() { return ready; },
+      async commitTransaction() {
+        await ready;
+        for (const name of ['clubProjects', 'projectMilestones', 'projectTasks', 'projectUpdates', 'projectAuditLogs']) {
+          if (this.rows.has(name)) rows.set(name, this.rows.get(name));
+        }
+        clear(this);
+      },
+      async abortTransaction() { await ready; clear(this); },
+      async endSession() { if (active) await this.abortTransaction(); }
+    };
+  } });
+  return db;
 }
 
 async function server(t) {
@@ -228,10 +258,10 @@ test('project collection schemas/indexes exist and demo mode cannot persist real
 });
 
 const mutationCases = [
-  ['project create', 'clubProjects', 'POST', '', { name: 'Second project' }, false],
-  ['project edit', 'clubProjects', 'PATCH', '/project', { status: 'on_hold' }, false],
-  ['milestone create', 'projectMilestones', 'POST', '/project/milestones', { title: 'Second milestone' }, false],
-  ['milestone edit', 'projectMilestones', 'PATCH', '/project/milestones/milestone', { status: 'done' }, false],
+  ['project create', 'clubProjects', 'POST', '', { name: 'Second project' }, true],
+  ['project edit', 'clubProjects', 'PATCH', '/project', { status: 'on_hold' }, true],
+  ['milestone create', 'projectMilestones', 'POST', '/project/milestones', { title: 'Second milestone' }, true],
+  ['milestone edit', 'projectMilestones', 'PATCH', '/project/milestones/milestone', { status: 'done' }, true],
   ['task create', 'projectTasks', 'POST', '/project/tasks', { title: 'Second task' }, false],
   ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done' }, false],
   ['decision create', 'projectUpdates', 'POST', '/project/updates', { type: 'decision', content: 'Record a new decision.' }, false]
