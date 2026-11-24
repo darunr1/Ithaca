@@ -6,6 +6,13 @@ import { definitions, indexes } from '../database/definitions.js';
 
 function database() {
   const rows = new Map();
+  let fault;
+  function failWrite(name, operation, value) {
+    if (fault?.name === name && fault.operation === operation && (!fault.when || fault.when(value))) {
+      fault = undefined;
+      throw new Error('Injected write failure');
+    }
+  }
   const list = name => {
     if (!rows.has(name)) rows.set(name, []);
     return rows.get(name);
@@ -28,8 +35,9 @@ function database() {
         async toArray() { return structuredClone(found); }
       };
     },
-    async insertOne(row) { list(name).push(structuredClone(row)); return { insertedId: row.id }; },
+    async insertOne(row) { failWrite(name, 'insertOne', row); list(name).push(structuredClone(row)); return { insertedId: row.id }; },
     async updateOne(where, change, opts = {}) {
+      failWrite(name, 'updateOne', change);
       let row = list(name).find(row => matches(row, where));
       if (!row && opts.upsert) {
         row = structuredClone(change.$setOnInsert || where);
@@ -54,7 +62,7 @@ function database() {
     list('userProfiles').push({ ...member, id: 'profile-' + name, internalMemberId: name,
       authProvider: 'supabase', authProviderUserId: name, role: 'member', onboarded: true });
   }
-  return { rows, collection, async command() { return { ok: 1 }; } };
+  return { rows, collection, failNextWrite(name, operation, when) { fault = { name, operation, when }; }, async command() { return { ok: 1 }; } };
 }
 
 async function server(t) {
@@ -218,3 +226,63 @@ test('project collection schemas/indexes exist and demo mode cannot persist real
     assert.equal(response.status, 404);
   } finally { await new Promise(resolve => instance.close(resolve)); }
 });
+
+const mutationCases = [
+  ['project create', 'clubProjects', 'POST', '', { name: 'Second project' }, false],
+  ['project edit', 'clubProjects', 'PATCH', '/project', { status: 'on_hold' }, false],
+  ['milestone create', 'projectMilestones', 'POST', '/project/milestones', { title: 'Second milestone' }, false],
+  ['milestone edit', 'projectMilestones', 'PATCH', '/project/milestones/milestone', { status: 'done' }, false],
+  ['task create', 'projectTasks', 'POST', '/project/tasks', { title: 'Second task' }, false],
+  ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done' }, false],
+  ['decision create', 'projectUpdates', 'POST', '/project/updates', { type: 'decision', content: 'Record a new decision.' }, false]
+];
+
+async function mutationFixture(t) {
+  const { db, call } = await server(t);
+  const club = await call('alice', '/organizations', { method: 'POST', body: { name: 'Integrity Society' } });
+  assert.equal(club.status, 201);
+  const base = '/organizations/' + club.data.data.club.id + '/projects';
+  const project = await call('alice', base, { method: 'POST', body: { name: 'Prototype' } });
+  assert.equal(project.status, 201);
+  const projectPath = base + '/' + project.data.data.project.id;
+  const milestone = await call('alice', projectPath + '/milestones', { method: 'POST', body: { title: 'Baseline milestone' } });
+  const task = await call('alice', projectPath + '/tasks', { method: 'POST', body: { title: 'Baseline task' } });
+  assert.equal(milestone.status, 201);
+  assert.equal(task.status, 201);
+  const resolve = suffix => base + suffix.replace('/project', '/' + project.data.data.project.id)
+    .replace('/milestones/milestone', '/milestones/' + milestone.data.data.milestone.id)
+    .replace('/tasks/task', '/tasks/' + task.data.data.task.id);
+  const snapshot = name => structuredClone(db.rows.get(name) || []);
+  return { db, call, resolve, snapshot, projectPath, taskId: task.data.data.task.id };
+}
+
+for (const [name, collection, method, suffix, body, atomic] of mutationCases) {
+  for (const failure of ['audit', 'timestamp']) {
+    test(name + ': ' + failure + ' failure ' + (atomic ? 'rolls back' : 'exposes a partial write'), async t => {
+      const { db, call, resolve, snapshot } = await mutationFixture(t);
+      // Avoid timestamp equality when requests happen within the same millisecond.
+      for (const project of db.rows.get('clubProjects')) project.updatedAt = '2000-01-01T00:00:00.000Z';
+      const before = snapshot(collection);
+      const projects = snapshot('clubProjects');
+      const audit = snapshot('projectAuditLogs');
+      if (failure === 'audit') db.failNextWrite('projectAuditLogs', 'insertOne');
+      else db.failNextWrite('clubProjects', 'updateOne', change =>
+        Object.keys(change.$set || {}).join(',') === 'updatedAt');
+      const response = await call('alice', resolve(suffix), { method, body });
+      assert.equal(response.status, 500);
+      if (atomic) {
+        assert.deepEqual(snapshot(collection), before);
+        assert.deepEqual(snapshot('clubProjects'), projects);
+        assert.deepEqual(snapshot('projectAuditLogs'), audit);
+      } else {
+        assert.notDeepEqual(snapshot(collection), before, 'primary mutation survived a failed response');
+        if (failure === 'audit') {
+          assert.deepEqual(snapshot('projectAuditLogs'), audit);
+          assert.notDeepEqual(snapshot('clubProjects'), projects);
+        } else {
+          assert.equal(snapshot('projectAuditLogs').length, audit.length + 1);
+        }
+      }
+    });
+  }
+}
