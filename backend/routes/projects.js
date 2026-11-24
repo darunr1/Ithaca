@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { httpError } from '../services/workspace.js';
+import { withProjectTransaction } from '../services/transactions.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
@@ -67,25 +68,23 @@ const assertOfficer = access => {
 // mounted ONLY in AUTH_MODE=supabase. Never trust a client-supplied member ID.
 export function projectRoutes({ db, send }) {
   const router = Router();
-  async function accessFor(req) {
+  async function accessFor(req, session) {
     const clubId = id.parse(req.params.clubId);
-    const [actor, club] = await Promise.all([
-      db.collection('members').findOne({ id: req.memberId }),
-      db.collection('clubs').findOne({ id: clubId })
-    ]);
+    const actor = await db.collection('members').findOne({ id: req.memberId }, { session });
+    const club = await db.collection('clubs').findOne({ id: clubId }, { session });
     if (!actor || !club || !actor.clubIds?.includes(clubId)) {
       throw httpError(404, 'NOT_FOUND', 'Club not found or inaccessible.');
     }
     return { clubId, actor, club, isOfficer: club.officerIds?.includes(actor.id) || club.ownerId === actor.id };
   }
-  async function projectFor(access, projectId) {
-    const project = await db.collection('clubProjects').findOne({ id: id.parse(projectId), clubId: access.clubId });
+  async function projectFor(access, projectId, session) {
+    const project = await db.collection('clubProjects').findOne({ id: id.parse(projectId), clubId: access.clubId }, { session });
     if (!project) throw httpError(404, 'NOT_FOUND', 'Project not found or inaccessible.');
     return project;
   }
-  async function memberInClub(memberId, clubId) {
+  async function memberInClub(memberId, clubId, session) {
     if (!memberId) return;
-    if (!(await db.collection('members').findOne({ id: memberId, clubIds: clubId }))) {
+    if (!(await db.collection('members').findOne({ id: memberId, clubIds: clubId }, { session }))) {
       throw httpError(422, 'INVALID_ASSIGNEE', 'The selected member does not belong to this club.');
     }
   }
@@ -95,16 +94,31 @@ export function projectRoutes({ db, send }) {
       id: milestoneId, clubId: access.clubId, projectId: project.id
     }))) throw httpError(422, 'INVALID_MILESTONE', 'Milestone does not belong to this project.');
   }
-  async function changeLog(access, project, action, entityId) {
+  async function changeLog(access, project, action, entityId, session) {
     const now = new Date().toISOString();
-    await Promise.all([
-      db.collection('projectAuditLogs').insertOne({
-        id: 'project-audit-' + randomUUID(), clubId: access.clubId,
-        projectId: project.id, actorId: access.actor.id, action, entityId, createdAt: now
-      }),
-      db.collection('clubProjects').updateOne({ id: project.id, clubId: access.clubId }, { $set: { updatedAt: now } })
-    ]);
+    const entry = {
+      id: 'project-audit-' + randomUUID(), clubId: access.clubId,
+      projectId: project.id, actorId: access.actor.id, action, entityId, createdAt: now
+    };
+    const audit = () => db.collection('projectAuditLogs').insertOne(entry, { session });
+    const touch = () => db.collection('clubProjects').updateOne(
+      { id: project.id, clubId: access.clubId }, { $set: { updatedAt: now } }, { session });
+    if (!session) { // Remaining legacy task/update paths migrate in PR 09.
+      await Promise.all([audit(), touch()]);
+    } else {
+      await audit();
+      const result = await touch();
+      if (!result.matchedCount) throw httpError(409, 'PROJECT_CHANGED', 'The project changed. Refresh and retry.');
+    }
+    return now;
   }
+
+  // The callback returns data only; HTTP responses are emitted after commit.
+  const mutate = (work, status = 200) => async (req, res) => {
+    const payload = await withProjectTransaction(db, session => work(req, session));
+    res.status(status);
+    send(res, payload);
+  };
 
   router.get('/:clubId/projects', async (req, res) => {
     const access = await accessFor(req);
@@ -112,22 +126,21 @@ export function projectRoutes({ db, send }) {
     send(res, { projects: newest(rows) });
   });
 
-  router.post('/:clubId/projects', async (req, res) => {
-    const access = await accessFor(req);
+  router.post('/:clubId/projects', mutate(async (req, session) => {
+    const access = await accessFor(req, session);
     assertOfficer(access);
     const input = createProject.parse(req.body ?? {});
-    for (const leadId of new Set(input.leadIds)) await memberInClub(leadId, access.clubId);
+    for (const leadId of new Set(input.leadIds)) await memberInClub(leadId, access.clubId, session);
     const now = new Date().toISOString();
     const project = {
       id: 'project-' + randomUUID(), clubId: access.clubId,
       ...input, leadIds: [...new Set(input.leadIds)],
       createdBy: access.actor.id, createdAt: now, updatedAt: now
     };
-    await db.collection('clubProjects').insertOne(project);
-    await changeLog(access, project, 'project.created', project.id);
-    res.status(201);
-    send(res, { project: clean(project) });
-  });
+    await db.collection('clubProjects').insertOne(project, { session });
+    const updatedAt = await changeLog(access, project, 'project.created', project.id, session);
+    return { project: clean({ ...project, updatedAt }) };
+  }, 201));
 
   router.get('/:clubId/projects/:projectId', async (req, res) => {
     const access = await accessFor(req);
@@ -147,46 +160,47 @@ export function projectRoutes({ db, send }) {
     });
   });
 
-  router.patch('/:clubId/projects/:projectId', async (req, res) => {
-    const access = await accessFor(req);
-    const project = await projectFor(access, req.params.projectId);
+  router.patch('/:clubId/projects/:projectId', mutate(async (req, session) => {
+    const access = await accessFor(req, session);
+    const project = await projectFor(access, req.params.projectId, session);
     assertManager(access, project);
     const patch = requirePatch(editProject.parse(req.body ?? {}));
     if ('leadIds' in patch) {
       assertOfficer(access);
-      for (const leadId of new Set(patch.leadIds)) await memberInClub(leadId, access.clubId);
+      for (const leadId of new Set(patch.leadIds)) await memberInClub(leadId, access.clubId, session);
       patch.leadIds = [...new Set(patch.leadIds)];
     }
-    await db.collection('clubProjects').updateOne({ id: project.id, clubId: access.clubId }, { $set: { ...patch, updatedAt: new Date().toISOString() } });
-    await changeLog(access, project, 'project.updated', project.id);
-    send(res, { project: clean({ ...project, ...patch }) });
-  });
+    const result = await db.collection('clubProjects').updateOne({ id: project.id, clubId: access.clubId }, { $set: { ...patch, updatedAt: new Date().toISOString() } }, { session });
+    if (!result.matchedCount) throw httpError(409, 'PROJECT_CHANGED', 'The project changed. Refresh and retry.');
+    const updatedAt = await changeLog(access, project, 'project.updated', project.id, session);
+    return { project: clean({ ...project, ...patch, updatedAt }) };
+  }));
 
-  router.post('/:clubId/projects/:projectId/milestones', async (req, res) => {
-    const access = await accessFor(req);
-    const project = await projectFor(access, req.params.projectId);
+  router.post('/:clubId/projects/:projectId/milestones', mutate(async (req, session) => {
+    const access = await accessFor(req, session);
+    const project = await projectFor(access, req.params.projectId, session);
     assertManager(access, project);
     const input = createMilestone.parse(req.body ?? {});
     const milestone = { id: 'milestone-' + randomUUID(), clubId: access.clubId, projectId: project.id,
       ...input, createdBy: access.actor.id, createdAt: new Date().toISOString() };
-    await db.collection('projectMilestones').insertOne(milestone);
-    await changeLog(access, project, 'milestone.created', milestone.id);
-    res.status(201); send(res, { milestone: clean(milestone) });
-  });
+    await db.collection('projectMilestones').insertOne(milestone, { session });
+    await changeLog(access, project, 'milestone.created', milestone.id, session);
+    return { milestone: clean(milestone) };
+  }, 201));
 
-  router.patch('/:clubId/projects/:projectId/milestones/:milestoneId', async (req, res) => {
-    const access = await accessFor(req);
-    const project = await projectFor(access, req.params.projectId);
+  router.patch('/:clubId/projects/:projectId/milestones/:milestoneId', mutate(async (req, session) => {
+    const access = await accessFor(req, session);
+    const project = await projectFor(access, req.params.projectId, session);
     assertManager(access, project);
     const milestoneId = id.parse(req.params.milestoneId);
     const patch = requirePatch(editMilestone.parse(req.body ?? {}));
     const result = await db.collection('projectMilestones').updateOne({
       id: milestoneId, clubId: access.clubId, projectId: project.id
-    }, { $set: patch });
-    if (!result.matchedCount && !result.modifiedCount) throw httpError(404, 'NOT_FOUND', 'Milestone not found.');
-    await changeLog(access, project, 'milestone.updated', milestoneId);
-    send(res, { milestoneId, ...patch });
-  });
+    }, { $set: patch }, { session });
+    if (!result.matchedCount) throw httpError(404, 'NOT_FOUND', 'Milestone not found.');
+    await changeLog(access, project, 'milestone.updated', milestoneId, session);
+    return { milestoneId, ...patch };
+  }));
 
   router.post('/:clubId/projects/:projectId/tasks', async (req, res) => {
     const access = await accessFor(req);
