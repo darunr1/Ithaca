@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../backend/app.js';
 import { readConfig } from '../backend/config.js';
+import { registerTransactionClient } from '../backend/services/transactions.js';
 import { definitions, indexes } from '../database/definitions.js';
 
 function database() {
@@ -13,16 +14,18 @@ function database() {
       throw new Error('Injected write failure');
     }
   }
-  const list = name => {
-    if (!rows.has(name)) rows.set(name, []);
-    return rows.get(name);
+  const list = (name, session) => {
+    const storage = session?.rows || rows;
+    if (!storage.has(name)) storage.set(name, []);
+    return storage.get(name);
   };
   const matches = (row, where) => Object.entries(where || {}).every(([key, expected]) => {
     const value = row[key];
+    if (expected && typeof expected === 'object' && '$exists' in expected) return (key in row) === expected.$exists;
     return Array.isArray(value) ? value.includes(expected) : value === expected;
   });
   const collection = name => ({
-    async findOne(where) { return list(name).find(row => matches(row, where)) ?? null; },
+    async findOne(where, { session } = {}) { if (session) await session.ready; return structuredClone(list(name, session).find(row => matches(row, where)) ?? null); },
     find(where) {
       let found = list(name).filter(row => matches(row, where));
       return {
@@ -35,13 +38,14 @@ function database() {
         async toArray() { return structuredClone(found); }
       };
     },
-    async insertOne(row) { failWrite(name, 'insertOne', row); list(name).push(structuredClone(row)); return { insertedId: row.id }; },
+    async insertOne(row, { session } = {}) { if (session) await session.ready; failWrite(name, 'insertOne', row); list(name, session).push(structuredClone(row)); return { insertedId: row.id }; },
     async updateOne(where, change, opts = {}) {
+      if (opts.session) await opts.session.ready;
       failWrite(name, 'updateOne', change);
-      let row = list(name).find(row => matches(row, where));
+      let row = list(name, opts.session).find(row => matches(row, where));
       if (!row && opts.upsert) {
         row = structuredClone(change.$setOnInsert || where);
-        list(name).push(row);
+        list(name, opts.session).push(row);
       }
       if (!row) return { matchedCount: 0, modifiedCount: 0 };
       Object.assign(row, change.$set || {});
@@ -62,7 +66,34 @@ function database() {
     list('userProfiles').push({ ...member, id: 'profile-' + name, internalMemberId: name,
       authProvider: 'supabase', authProviderUserId: name, role: 'member', onboarded: true });
   }
-  return { rows, collection, failNextWrite(name, operation, when) { fault = { name, operation, when }; }, async command() { return { ok: 1 }; } };
+  const db = { rows, collection, failNextWrite(name, operation, when) { fault = { name, operation, when }; }, async command() { return { ok: 1 }; } };
+  // Model staged writes and abort in the fixture. A serialized queue makes
+  // concurrent request tests deterministic; this is not a MongoDB simulator.
+  let tail = Promise.resolve();
+  registerTransactionClient(db, { startSession() {
+    let ready, release, active = false;
+    const clear = session => { session.rows = undefined; active = false; release?.(); };
+    return {
+      startTransaction() {
+        active = true;
+        const previous = tail;
+        tail = new Promise(resolve => { release = resolve; });
+        ready = previous.then(() => { this.rows = structuredClone(rows); });
+      },
+      inTransaction() { return active; },
+      get ready() { return ready; },
+      async commitTransaction() {
+        await ready;
+        for (const name of ['clubProjects', 'projectMilestones', 'projectTasks', 'projectUpdates', 'projectAuditLogs']) {
+          if (this.rows.has(name)) rows.set(name, this.rows.get(name));
+        }
+        clear(this);
+      },
+      async abortTransaction() { await ready; clear(this); },
+      async endSession() { if (active) await this.abortTransaction(); }
+    };
+  } });
+  return db;
 }
 
 async function server(t) {
@@ -149,10 +180,10 @@ test('project features require verified identity, enforce club isolation and per
   assert.equal((await call('bob', base + '/' + project.id + '/tasks', { method: 'POST',
     body: { title: 'Assign to an officer', assigneeId: 'alice' } })).status, 403);
   assert.equal((await call('bob', base + '/' + project.id + '/tasks/' + taskId,
-    { method: 'PATCH', body: { title: 'Unauthorized change' } })).status, 403);
+    { method: 'PATCH', body: { title: 'Unauthorized change', expectedVersion: 0 } })).status, 403);
 
   const done = await call('bob', base + '/' + project.id + '/tasks/' + taskId,
-    { method: 'PATCH', body: { status: 'done', evidenceUrl: 'https://example.com/evidence' } });
+    { method: 'PATCH', body: { status: 'done', evidenceUrl: 'https://example.com/evidence', expectedVersion: 0 } });
   assert.equal(done.status, 200);
   const memberTask = await call('bob', base + '/' + project.id + '/tasks',
     { method: 'POST', body: { title: 'Document parser integration' } });
@@ -228,13 +259,13 @@ test('project collection schemas/indexes exist and demo mode cannot persist real
 });
 
 const mutationCases = [
-  ['project create', 'clubProjects', 'POST', '', { name: 'Second project' }, false],
-  ['project edit', 'clubProjects', 'PATCH', '/project', { status: 'on_hold' }, false],
-  ['milestone create', 'projectMilestones', 'POST', '/project/milestones', { title: 'Second milestone' }, false],
-  ['milestone edit', 'projectMilestones', 'PATCH', '/project/milestones/milestone', { status: 'done' }, false],
-  ['task create', 'projectTasks', 'POST', '/project/tasks', { title: 'Second task' }, false],
-  ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done' }, false],
-  ['decision create', 'projectUpdates', 'POST', '/project/updates', { type: 'decision', content: 'Record a new decision.' }, false]
+  ['project create', 'clubProjects', 'POST', '', { name: 'Second project' }, true],
+  ['project edit', 'clubProjects', 'PATCH', '/project', { status: 'on_hold' }, true],
+  ['milestone create', 'projectMilestones', 'POST', '/project/milestones', { title: 'Second milestone' }, true],
+  ['milestone edit', 'projectMilestones', 'PATCH', '/project/milestones/milestone', { status: 'done' }, true],
+  ['task create', 'projectTasks', 'POST', '/project/tasks', { title: 'Second task' }, true],
+  ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done', expectedVersion: 0 }, true],
+  ['decision create', 'projectUpdates', 'POST', '/project/updates', { type: 'decision', content: 'Record a new decision.' }, true]
 ];
 
 async function mutationFixture(t) {
@@ -286,3 +317,73 @@ for (const [name, collection, method, suffix, body, atomic] of mutationCases) {
     });
   }
 }
+
+test('rejected task and decision mutations leave all project records unchanged', async t => {
+  const { call, snapshot, projectPath, taskId } = await mutationFixture(t);
+  const names = ['clubProjects', 'projectTasks', 'projectUpdates', 'projectAuditLogs'];
+  const before = names.map(snapshot);
+  const invalidAssignee = await call('alice', projectPath + '/tasks/' + taskId,
+    { method: 'PATCH', body: { assigneeId: 'outsider', expectedVersion: 0 } });
+  assert.equal(invalidAssignee.status, 422);
+  const invalidMilestone = await call('alice', projectPath + '/tasks/' + taskId,
+    { method: 'PATCH', body: { milestoneId: 'missing', expectedVersion: 0 } });
+  assert.equal(invalidMilestone.status, 422);
+  const invalidDecision = await call('alice', projectPath + '/updates',
+    { method: 'POST', body: { type: 'decision', content: 'x' } });
+  assert.equal(invalidDecision.status, 400);
+  assert.deepEqual(names.map(snapshot), before);
+});
+
+for (const [name, collection, method, suffix, body] of mutationCases) {
+  test(name + ': primary write failure leaves no audit or timestamp change', async t => {
+    const { db, call, resolve, snapshot } = await mutationFixture(t);
+    const names = [...new Set([collection, 'clubProjects', 'projectAuditLogs'])];
+    const before = names.map(snapshot);
+    db.failNextWrite(collection, method === 'POST' ? 'insertOne' : 'updateOne');
+    const response = await call('alice', resolve(suffix), { method, body });
+    assert.equal(response.status, 500);
+    assert.deepEqual(names.map(snapshot), before);
+  });
+}
+
+test('competing task edits commit once and return 409 for the stale version', async t => {
+  const { call, snapshot, projectPath, taskId } = await mutationFixture(t);
+  const taskPath = projectPath + '/tasks/' + taskId;
+  const audit = snapshot('projectAuditLogs').length;
+  const detail = await call('alice', projectPath);
+  const initial = detail.data.data.tasks.find(task => task.id === taskId);
+  assert.equal(initial.version, 0);
+  const results = await Promise.all(['done', 'blocked'].map(status =>
+    call('alice', taskPath, { method: 'PATCH', body: { status, expectedVersion: initial.version } })));
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  const winner = results.find(result => result.status === 200);
+  const loser = results.find(result => result.status === 409);
+  assert.equal(loser.data.error.code, 'TASK_CHANGED');
+  assert.equal(winner.data.data.version, 1);
+  const stored = snapshot('projectTasks').find(task => task.id === taskId);
+  assert.equal(stored.status, winner.data.data.status);
+  assert.equal(stored.version, 1);
+  assert.equal(snapshot('projectAuditLogs').length, audit + 1);
+
+  const before = snapshot('projectTasks');
+  for (const body of [{ status: 'todo' }, { status: 'todo', expectedVersion: -1 },
+    { status: 'todo', expectedVersion: '1' }, { expectedVersion: 1 }]) {
+    assert.equal((await call('alice', taskPath, { method: 'PATCH', body })).status, 400);
+  }
+  assert.deepEqual(snapshot('projectTasks'), before);
+  assert.equal(snapshot('projectAuditLogs').length, audit + 1);
+  const retry = await call('alice', taskPath, { method: 'PATCH', body: { status: 'todo', expectedVersion: 1 } });
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.data.version, 2);
+});
+
+test('legacy tasks without stored version are exposed as zero and upgraded on first edit', async t => {
+  const { db, call, snapshot, projectPath, taskId } = await mutationFixture(t);
+  delete db.rows.get('projectTasks').find(task => task.id === taskId).version;
+  const detail = await call('alice', projectPath);
+  assert.equal(detail.data.data.tasks.find(task => task.id === taskId).version, 0);
+  const path = projectPath + '/tasks/' + taskId;
+  assert.equal((await call('alice', path, { method: 'PATCH', body: { status: 'done', expectedVersion: 0 } })).status, 200);
+  assert.equal((await call('alice', path, { method: 'PATCH', body: { status: 'blocked', expectedVersion: 0 } })).status, 409);
+  assert.equal(snapshot('projectTasks').find(task => task.id === taskId).version, 1);
+});

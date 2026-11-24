@@ -16,7 +16,8 @@ export const definitions = {
     clubId: string, projectId: string, title: string, description: string, status: { enum: ['todo', 'in_progress', 'blocked', 'done'] },
     assigneeId: { bsonType: ['string', 'null'] }, milestoneId: { bsonType: ['string', 'null'] },
     dueDate: { bsonType: ['string', 'null'] }, evidenceUrl: { bsonType: ['string', 'null'] },
-    createdBy: string, createdAt: string, updatedAt: string
+    createdBy: string, createdAt: string, updatedAt: string,
+    version: { bsonType: ['int', 'long'], minimum: 0, maximum: 2147483647 }
   }),
   projectUpdates: schema(['clubId', 'projectId', 'type', 'content', 'authorId', 'createdAt'], {
     clubId: string, projectId: string, type: { enum: ['progress', 'decision', 'blocker', 'meeting'] },
