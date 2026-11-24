@@ -17,4 +17,19 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Start isolated MongoDB replica set
+        run: |
+          docker run -d --name ithaca-mongo -p 127.0.0.1:27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
+          for i in {1..60}; do
+            if docker exec ithaca-mongo mongosh --quiet --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 1)'; then break; fi
+            sleep 1
+          done
+          docker exec ithaca-mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+          for i in {1..60}; do
+            if docker exec ithaca-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
+            sleep 1
+          done
+          exit 1
       - run: npm run build
+        env:
+          PROJECT_TRANSACTION_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=true

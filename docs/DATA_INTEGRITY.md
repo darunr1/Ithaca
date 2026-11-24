@@ -20,7 +20,7 @@ Target: one session/transaction for authorization reads, primary mutation, audit
 
 ## Transaction infrastructure
 
-Supabase/Atlas mode requires a session-capable replica set (including a single-node development replica set) or sharded cluster. Standalone mongod is not supported. Startup verifies the hello topology before registering the MongoClient. The shared helper uses the MongoDB driver's withTransaction retry semantics and a 10-second client-side timeout, snapshot reads and majority writes. Each session is closed in finally. Callbacks may be retried; do not send responses or perform external side effects inside them. All operations must receive the session and run sequentially. An unknown commit outcome is not proof of rollback; do not automatically replay a create from the HTTP layer.
+Supabase/Atlas mode requires a session-capable replica set (including a single-node development replica set) or sharded cluster. Standalone mongod is not supported. Startup verifies the hello topology before registering the MongoClient. MongoDB driver 6.22 ignores withTransaction timeoutMS. The shared helper uses the public core transaction API with snapshot reads, majority writes, at most three transaction attempts and three commit attempts per transaction, and a 10-second monotonic retry/admission window. It refuses to start a new commit after the window expires. Supabase-mode connections use a 10-second socket timeout, five-second pool wait/server selection limits, and transactions use maxCommitTimeMS and majority write concern timeout. This bounds retry admission, not an absolute wall-clock cancellation guarantee: in-flight driver operations and cleanup can exceed the window. Unknown commit results retry only commit and return TRANSACTION_OUTCOME_UNKNOWN if unresolved; the callback is never replayed after ambiguity. Each session is closed in finally. Callbacks may be retried; do not send responses or perform external side effects inside them. All operations must receive the session and run sequentially. An unknown commit outcome is not proof of rollback; do not automatically replay a create from the HTTP layer.
 
 PR 07 introduces infrastructure only; endpoint migration follows.
 
@@ -32,6 +32,10 @@ Project create/edit and milestone create/edit now perform authorization and vali
 
 Task creation/edit and progress, decision, blocker and meeting entries now use the same session as their authorization and validation reads, audit and parent timestamp. There is no nontransactional mutation path in this router. All seven mutation paths now assert rollback on audit, timestamp or primary-write failure. Invalid assignees, milestones and decisions must leave project data unchanged. This does not provide HTTP request idempotency across independent requests or protect other routers.
 
+CI starts an isolated MongoDB replica set and exercises real transaction rollback; the production Atlas connection is not used for these tests.
+
 ## Optimistic task concurrency (PR 10)
 
 Task creates and project detail responses expose integer version (initially 0). Legacy tasks without the field are treated as version 0 and upgraded on first successful edit, without a bulk migration. PATCH task requires expectedVersion from the last read; missing or malformed versions are 400. A stale revision returns 409 TASK_CHANGED without any write or audit; a scoped conditional filter matches the stored version (or absent field for legacy) and preserves assignee constraints. The version increments in the same transaction as the patch, parent timestamp and audit. Clients must refresh after a conflict rather than automatically replay stale edits. The task board sends the rendered revision and refreshes on 409. Other project/milestone edits do not yet enforce client revisions.
+
+The real replica-set test also verifies competing task writes.

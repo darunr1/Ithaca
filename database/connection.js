@@ -12,7 +12,10 @@ export async function connectDatabase(config) {
 async function connectFresh(config) {
   let client;
   try {
-    client = new MongoClient(config.MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+    client = new MongoClient(config.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      ...(config.AUTH_MODE === 'supabase' ? { socketTimeoutMS: 10000, waitQueueTimeoutMS: 5000 } : {})
+    });
     await client.connect();
     const db = client.db(config.MONGODB_DB);
     await db.command({ ping: 1 });
