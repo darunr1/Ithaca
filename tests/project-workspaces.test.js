@@ -257,9 +257,9 @@ const mutationCases = [
   ['project edit', 'clubProjects', 'PATCH', '/project', { status: 'on_hold' }, true],
   ['milestone create', 'projectMilestones', 'POST', '/project/milestones', { title: 'Second milestone' }, true],
   ['milestone edit', 'projectMilestones', 'PATCH', '/project/milestones/milestone', { status: 'done' }, true],
-  ['task create', 'projectTasks', 'POST', '/project/tasks', { title: 'Second task' }, false],
-  ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done' }, false],
-  ['decision create', 'projectUpdates', 'POST', '/project/updates', { type: 'decision', content: 'Record a new decision.' }, false]
+  ['task create', 'projectTasks', 'POST', '/project/tasks', { title: 'Second task' }, true],
+  ['task edit', 'projectTasks', 'PATCH', '/project/tasks/task', { status: 'done' }, true],
+  ['decision create', 'projectUpdates', 'POST', '/project/updates', { type: 'decision', content: 'Record a new decision.' }, true]
 ];
 
 async function mutationFixture(t) {
@@ -310,4 +310,32 @@ for (const [name, collection, method, suffix, body, atomic] of mutationCases) {
       }
     });
   }
+}
+
+test('rejected task and decision mutations leave all project records unchanged', async t => {
+  const { call, snapshot, projectPath, taskId } = await mutationFixture(t);
+  const names = ['clubProjects', 'projectTasks', 'projectUpdates', 'projectAuditLogs'];
+  const before = names.map(snapshot);
+  const invalidAssignee = await call('alice', projectPath + '/tasks/' + taskId,
+    { method: 'PATCH', body: { assigneeId: 'outsider' } });
+  assert.equal(invalidAssignee.status, 422);
+  const invalidMilestone = await call('alice', projectPath + '/tasks/' + taskId,
+    { method: 'PATCH', body: { milestoneId: 'missing' } });
+  assert.equal(invalidMilestone.status, 422);
+  const invalidDecision = await call('alice', projectPath + '/updates',
+    { method: 'POST', body: { type: 'decision', content: 'x' } });
+  assert.equal(invalidDecision.status, 400);
+  assert.deepEqual(names.map(snapshot), before);
+});
+
+for (const [name, collection, method, suffix, body] of mutationCases) {
+  test(name + ': primary write failure leaves no audit or timestamp change', async t => {
+    const { db, call, resolve, snapshot } = await mutationFixture(t);
+    const names = [...new Set([collection, 'clubProjects', 'projectAuditLogs'])];
+    const before = names.map(snapshot);
+    db.failNextWrite(collection, method === 'POST' ? 'insertOne' : 'updateOne');
+    const response = await call('alice', resolve(suffix), { method, body });
+    assert.equal(response.status, 500);
+    assert.deepEqual(names.map(snapshot), before);
+  });
 }

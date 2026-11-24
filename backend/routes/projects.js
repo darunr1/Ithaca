@@ -88,11 +88,11 @@ export function projectRoutes({ db, send }) {
       throw httpError(422, 'INVALID_ASSIGNEE', 'The selected member does not belong to this club.');
     }
   }
-  async function milestoneInProject(milestoneId, access, project) {
+  async function milestoneInProject(milestoneId, access, project, session) {
     if (!milestoneId) return;
     if (!(await db.collection('projectMilestones').findOne({
       id: milestoneId, clubId: access.clubId, projectId: project.id
-    }))) throw httpError(422, 'INVALID_MILESTONE', 'Milestone does not belong to this project.');
+    }, { session }))) throw httpError(422, 'INVALID_MILESTONE', 'Milestone does not belong to this project.');
   }
   async function changeLog(access, project, action, entityId, session) {
     const now = new Date().toISOString();
@@ -103,13 +103,9 @@ export function projectRoutes({ db, send }) {
     const audit = () => db.collection('projectAuditLogs').insertOne(entry, { session });
     const touch = () => db.collection('clubProjects').updateOne(
       { id: project.id, clubId: access.clubId }, { $set: { updatedAt: now } }, { session });
-    if (!session) { // Remaining legacy task/update paths migrate in PR 09.
-      await Promise.all([audit(), touch()]);
-    } else {
-      await audit();
-      const result = await touch();
-      if (!result.matchedCount) throw httpError(409, 'PROJECT_CHANGED', 'The project changed. Refresh and retry.');
-    }
+    await audit();
+    const result = await touch();
+    if (!result.matchedCount) throw httpError(409, 'PROJECT_CHANGED', 'The project changed. Refresh and retry.');
     return now;
   }
 
@@ -202,32 +198,32 @@ export function projectRoutes({ db, send }) {
     return { milestoneId, ...patch };
   }));
 
-  router.post('/:clubId/projects/:projectId/tasks', async (req, res) => {
-    const access = await accessFor(req);
-    const project = await projectFor(access, req.params.projectId);
+  router.post('/:clubId/projects/:projectId/tasks', mutate(async (req, session) => {
+    const access = await accessFor(req, session);
+    const project = await projectFor(access, req.params.projectId, session);
     const input = createTask.parse(req.body ?? {});
     const canManage = access.isOfficer || (project.leadIds || []).includes(access.actor.id);
     if (!canManage && input.assigneeId && input.assigneeId !== access.actor.id) {
       throw httpError(403, 'ASSIGNMENT_NOT_ALLOWED', 'Members may only assign tasks to themselves.');
     }
     const assigneeId = canManage ? input.assigneeId : access.actor.id;
-    await memberInClub(assigneeId, access.clubId);
-    await milestoneInProject(input.milestoneId, access, project);
+    await memberInClub(assigneeId, access.clubId, session);
+    await milestoneInProject(input.milestoneId, access, project, session);
     const now = new Date().toISOString();
     const task = { id: 'task-' + randomUUID(), clubId: access.clubId, projectId: project.id,
       ...input, assigneeId, createdBy: access.actor.id, createdAt: now, updatedAt: now };
-    await db.collection('projectTasks').insertOne(task);
-    await changeLog(access, project, 'task.created', task.id);
-    res.status(201); send(res, { task: clean(task) });
-  });
+    await db.collection('projectTasks').insertOne(task, { session });
+    await changeLog(access, project, 'task.created', task.id, session);
+    return { task: clean(task) };
+  }, 201));
 
-  router.patch('/:clubId/projects/:projectId/tasks/:taskId', async (req, res) => {
-    const access = await accessFor(req);
-    const project = await projectFor(access, req.params.projectId);
+  router.patch('/:clubId/projects/:projectId/tasks/:taskId', mutate(async (req, session) => {
+    const access = await accessFor(req, session);
+    const project = await projectFor(access, req.params.projectId, session);
     const taskId = id.parse(req.params.taskId);
     const task = await db.collection('projectTasks').findOne({
       id: taskId, clubId: access.clubId, projectId: project.id
-    });
+    }, { session });
     if (!task) throw httpError(404, 'NOT_FOUND', 'Task not found.');
     const canManage = access.isOfficer || (project.leadIds || []).includes(access.actor.id);
     const patch = requirePatch(editTask.parse(req.body ?? {}));
@@ -237,29 +233,29 @@ export function projectRoutes({ db, send }) {
         throw httpError(403, 'TASK_PERMISSION_REQUIRED', 'Assigned members can update status and evidence only.');
       }
     }
-    if ('assigneeId' in patch) await memberInClub(patch.assigneeId, access.clubId);
-    if ('milestoneId' in patch) await milestoneInProject(patch.milestoneId, access, project);
+    if ('assigneeId' in patch) await memberInClub(patch.assigneeId, access.clubId, session);
+    if ('milestoneId' in patch) await milestoneInProject(patch.milestoneId, access, project, session);
     const filter = { id: taskId, clubId: access.clubId, projectId: project.id,
       ...(canManage ? {} : { assigneeId: access.actor.id }) };
     const result = await db.collection('projectTasks').updateOne(filter,
-      { $set: { ...patch, updatedAt: new Date().toISOString() } });
-    if (!result.matchedCount && !result.modifiedCount) throw httpError(409, 'TASK_CHANGED', 'The task assignment changed. Refresh and retry.');
-    await changeLog(access, project, 'task.updated', taskId);
-    send(res, { taskId, ...patch });
-  });
+      { $set: { ...patch, updatedAt: new Date().toISOString() } }, { session });
+    if (!result.matchedCount) throw httpError(409, 'TASK_CHANGED', 'The task assignment changed. Refresh and retry.');
+    await changeLog(access, project, 'task.updated', taskId, session);
+    return { taskId, ...patch };
+  }));
 
-  router.post('/:clubId/projects/:projectId/updates', async (req, res) => {
-    const access = await accessFor(req);
-    const project = await projectFor(access, req.params.projectId);
+  router.post('/:clubId/projects/:projectId/updates', mutate(async (req, session) => {
+    const access = await accessFor(req, session);
+    const project = await projectFor(access, req.params.projectId, session);
     const input = createUpdate.parse(req.body ?? {});
     // A decision reads as an official club record, so it requires a lead/officer.
     if (input.type === 'decision') assertManager(access, project);
     const update = { id: 'project-update-' + randomUUID(), clubId: access.clubId,
       projectId: project.id, ...input, authorId: access.actor.id, createdAt: new Date().toISOString() };
-    await db.collection('projectUpdates').insertOne(update);
-    await changeLog(access, project, 'update.created', update.id);
-    res.status(201); send(res, { update: clean(update) });
-  });
+    await db.collection('projectUpdates').insertOne(update, { session });
+    await changeLog(access, project, 'update.created', update.id, session);
+    return { update: clean(update) };
+  }, 201));
 
   // Portable, read-only handoff export. No separate AI service or paid dependency.
   router.get('/:clubId/projects/:projectId/handoff', async (req, res) => {
