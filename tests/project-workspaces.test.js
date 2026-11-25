@@ -20,18 +20,26 @@ function database() {
     return storage.get(name);
   };
   const matches = (row, where) => Object.entries(where || {}).every(([key, expected]) => {
+    if (key === '$or') return expected.some(query => matches(row, query));
     const value = row[key];
+    if (expected instanceof RegExp) return expected.test(String(value ?? ''));
     if (expected && typeof expected === 'object' && '$exists' in expected) return (key in row) === expected.$exists;
     return Array.isArray(value) ? value.includes(expected) : value === expected;
   });
   const collection = name => ({
     async findOne(where, { session } = {}) { if (session) await session.ready; return structuredClone(list(name, session).find(row => matches(row, where)) ?? null); },
+    async countDocuments(where) { return list(name).filter(row => matches(row, where)).length; },
     find(where) {
       let found = list(name).filter(row => matches(row, where));
       return {
         sort(spec) {
-          const [field, direction] = Object.entries(spec)[0];
-          found = [...found].sort((a, b) => String(a[field]).localeCompare(String(b[field])) * direction);
+          found = [...found].sort((a, b) => {
+            for (const [field, direction] of Object.entries(spec)) {
+              const cmp = String(a[field]).localeCompare(String(b[field])) * direction;
+              if (cmp) return cmp;
+            }
+            return 0;
+          });
           return this;
         },
         limit(value) { found = found.slice(0, value); return this; },
@@ -429,4 +437,24 @@ test('legacy tasks without stored version are exposed as zero and upgraded on fi
   assert.equal((await call('alice', path, { method: 'PATCH', body: { status: 'done', expectedVersion: 0 } })).status, 200);
   assert.equal((await call('alice', path, { method: 'PATCH', body: { status: 'blocked', expectedVersion: 0 } })).status, 409);
   assert.equal(snapshot('projectTasks').find(task => task.id === taskId).version, 1);
+});
+
+test('task filters are scoped, validated, literal and preserve whole-project summary', async t => {
+  const { call } = await server(t);
+  const club = await call('alice','/organizations',{method:'POST',body:{name:'Search Club'}});
+  const base = '/organizations/' + club.data.data.club.id + '/projects';
+  const created = await call('alice',base,{method:'POST',body:{name:'Search project'}});
+  const path = base + '/' + created.data.data.project.id;
+  for (const body of [{title:'CAN [bus]',assigneeId:'alice',status:'done'},{title:'Other task',status:'blocked'}]) {
+    assert.equal((await call('alice',path+'/tasks',{method:'POST',body})).status,201);
+  }
+  const result = await call('alice',path+'?mine=true&status=done&q=%5Bbus%5D&sort=title');
+  assert.equal(result.status,200);
+  assert.equal(result.data.data.tasks.length,1);
+  assert.equal(result.data.data.tasks[0].title,'CAN [bus]');
+  assert.equal(result.data.data.summary.totalTasks,2);
+  assert.equal((await call('alice',path+'?assignee=unassigned')).data.data.tasks.length,1);
+  assert.equal((await call('alice',path+'?status=invalid')).status,400);
+  assert.equal((await call('alice',path+'?mine=true&assignee=alice')).status,400);
+  assert.equal((await call('outsider',path+'?mine=true')).status,404);
 });

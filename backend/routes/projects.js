@@ -13,6 +13,12 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
 const text = (min, max) => z.string().trim().min(min).max(max);
 const projectStatus = z.enum(['active', 'on_hold', 'completed', 'archived']);
 const taskStatus = z.enum(['todo', 'in_progress', 'blocked', 'done']);
+const taskFilters = z.object({
+  mine: z.enum(['true', 'false']).optional(), status: taskStatus.optional(),
+  assignee: z.union([id, z.literal('unassigned')]).optional(),
+  q: z.string().trim().max(120).optional(), sort: z.enum(['newest', 'oldest', 'title']).default('newest')
+}).strict();
+const taskSorts = { newest: { createdAt: -1, id: 1 }, oldest: { createdAt: 1, id: 1 }, title: { title: 1, id: 1 } };
 const milestoneStatus = z.enum(['planned', 'in_progress', 'done']);
 const evidenceUrl = z.string().url().max(1000).refine(value => /^https?:\/\//i.test(value), 'Use an http(s) URL.').nullable();
 const createProject = z.object({
@@ -143,16 +149,31 @@ export function projectRoutes({ db, send }) {
     const access = await accessFor(req);
     const project = await projectFor(access, req.params.projectId);
     const scope = { clubId: access.clubId, projectId: project.id };
-    const [milestones, tasks, updates] = await Promise.all([
-      db.collection('projectMilestones').find(scope).sort({ createdAt: 1 }).limit(200).toArray(),
-      db.collection('projectTasks').find(scope).sort({ createdAt: -1 }).limit(500).toArray(),
-      db.collection('projectUpdates').find(scope).sort({ createdAt: -1 }).limit(100).toArray()
+    const filters = taskFilters.parse(req.query);
+    const taskScope = { ...scope };
+    if (filters.status) taskScope.status = filters.status;
+    if (filters.assignee && filters.assignee !== 'unassigned') await memberInClub(filters.assignee, access);
+    if (filters.mine === 'true') {
+      if (filters.assignee) throw httpError(400, 'INVALID_FILTER', 'Choose My Tasks or an assignee, not both.');
+      taskScope.assigneeId = access.actor.id;
+    } else if (filters.assignee) taskScope.assigneeId = filters.assignee === 'unassigned' ? null : filters.assignee;
+    if (filters.q) {
+      const literal = Array.from(filters.q, char => '.*+?^${}()|[]'.includes(char) || char.charCodeAt(0) === 92 ? String.fromCharCode(92) + char : char).join('');
+      const regex = new RegExp(literal, 'i');
+      taskScope.$or = [{ title: regex }, { description: regex }];
+    }
+    const taskCollection = db.collection('projectTasks');
+    const [milestones, tasks, updates, total, completed, blocked] = await Promise.all([
+      db.collection('projectMilestones').find(scope).sort({ createdAt: 1, id: 1 }).limit(200).toArray(),
+      taskCollection.find(taskScope).sort(taskSorts[filters.sort]).limit(500).toArray(),
+      db.collection('projectUpdates').find(scope).sort({ createdAt: -1, id: 1 }).limit(100).toArray(),
+      taskCollection.countDocuments(scope), taskCollection.countDocuments({ ...scope, status: 'done' }),
+      taskCollection.countDocuments({ ...scope, status: 'blocked' })
     ]);
-    const completed = tasks.filter(task => task.status === 'done').length;
     send(res, {
       project: clean(project), milestones: newest(milestones), tasks: tasks.map(cleanTask), updates: newest(updates),
-      summary: { totalTasks: tasks.length, completedTasks: completed, blockedTasks: tasks.filter(task => task.status === 'blocked').length,
-        completionPercent: tasks.length ? Math.round(100 * completed / tasks.length) : 0 },
+      summary: { totalTasks: total, completedTasks: completed, blockedTasks: blocked,
+        completionPercent: total ? Math.round(100 * completed / total) : 0 },
       permissions: { canManage: access.isOfficer || (project.leadIds || []).includes(access.actor.id), actorId: access.actor.id }
     });
   });

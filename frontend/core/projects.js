@@ -1,7 +1,7 @@
 import { api } from '../shared/api.js';
 import { e } from '../shared/ui.js';
 
-const state = { clubId: '', projectId: '', flash: '' };
+const state = { clubId: '', projectId: '', flash: '', filters: {} };
 const statuses = ['todo', 'in_progress', 'blocked', 'done'];
 const labels = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' };
 const enc = encodeURIComponent;
@@ -76,6 +76,24 @@ export function projectEditPayload(data) {
   return { name: data.name, description: data.description, targetDate: data.targetDate || null, status: data.status };
 }
 
+export function taskFilterQuery(filters) {
+  const query = new URLSearchParams();
+  for (const key of ['q', 'status', 'assignee', 'sort', 'mine']) if (filters[key]) query.set(key, filters[key]);
+  if (filters.mine === 'true') query.delete('assignee');
+  return query.toString();
+}
+function filterForm(roster) {
+  const f = state.filters;
+  return '<form id="project-filter-form" class="project-form"><div class="project-form-row">' +
+    '<label>Search tasks<input name="q" type="search" maxlength="120" value="' + e(f.q) + '"></label>' +
+    '<label>Status<select name="status">' + option('', 'All statuses', !f.status) +
+    statuses.map(v => option(v, labels[v], f.status === v)).join('') + '</select></label>' +
+    '<label>Assignee<select name="assignee">' + option('', 'Everyone', !f.assignee) +
+    option('unassigned', 'Unassigned', f.assignee === 'unassigned') + roster.map(m => option(m.id, m.name, f.assignee === m.id)).join('') + '</select></label>' +
+    '<label>Sort<select name="sort">' + [['newest','Newest'],['oldest','Oldest'],['title','Title']].map(([v,l]) => option(v,l,(f.sort || 'newest') === v)).join('') + '</select></label></div>' +
+    '<label class="project-lead-option"><input type="checkbox" name="mine" value="true"' + (f.mine === 'true' ? ' checked' : '') + '> My tasks (overrides assignee)</label>' +
+    '<div><button type="submit">Apply filters</button> <button type="button" id="project-clear-filters" class="secondary">Clear filters</button></div></form>';
+}
 function detailPage(detail, clubs, isOfficer, roster) {
   const { project, milestones, tasks, updates, summary, permissions } = detail;
   const canManage = permissions.canManage;
@@ -142,6 +160,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
     (project.leadIds.length ? 'Leads: ' + project.leadIds.map(id => e(rosterMap.get(id)?.name || 'Member')).join(', ') : 'No leads assigned') +
     '</p>' + projectEditForm(project, canManage) + '</section>' + leadControls + newProjectControl +
     '<div class="project-section-heading"><h2>Task board</h2><small>' + statusCount.map(s => s.count + ' ' + labels[s.status]).join(' · ') + '</small></div>' +
+    filterForm(roster) + '<p class="project-muted">Showing ' + tasks.length + ' of ' + summary.totalTasks + ' project tasks</p>' +
     '<div class="project-board">' + board + '</div>' +
     '<div class="project-two-column"><section class="module-panel">' + createTask + '</section>' +
     '<section class="module-panel"><h2>Milestones</h2>' + milestoneRows + milestoneForm + '</section></div>' +
@@ -173,8 +192,9 @@ function flash() {
 
 export async function renderProjects(input = {}) {
   if (input && typeof input === 'object') {
-    if (typeof input.clubId === 'string') { state.clubId = input.clubId; state.projectId = ''; }
-    if (typeof input.projectId === 'string') state.projectId = input.projectId;
+    if (typeof input.clubId === 'string') { state.clubId = input.clubId; state.projectId = ''; state.filters = {}; }
+    if (typeof input.projectId === 'string' && input.projectId !== state.projectId) { state.projectId = input.projectId; state.filters = {}; }
+    if (input.filters) state.filters = input.filters;
     if (typeof input.flash === 'string') state.flash = input.flash;
   }
   const [{ data: me }, { data: clubs }] = await Promise.all([api('/auth/me'), api('/clubs')]);
@@ -194,7 +214,7 @@ export async function renderProjects(input = {}) {
     createForm + '</section></div>';
 
   const [{ data: detail }, { data: roster }] = await Promise.all([
-    api(projectPath()), api('/clubs/' + enc(state.clubId) + '/roster')
+    api(projectPath() + '?' + taskFilterQuery(state.filters)), api('/clubs/' + enc(state.clubId) + '/roster')
   ]);
   return detailPage(detail, clubs, isOfficer, roster);
 }
@@ -214,6 +234,13 @@ export function bindProjects(root, rerender) {
   };
   root.querySelector('#projects-club-picker')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
   root.querySelector('#project-picker')?.addEventListener('change', event => rerender({ projectId: event.target.value }));
+  root.querySelector('#project-filter-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const filters = Object.fromEntries(new FormData(event.currentTarget));
+    if (filters.mine === 'true') delete filters.assignee;
+    rerender({ filters });
+  });
+  root.querySelector('#project-clear-filters')?.addEventListener('click', () => rerender({ filters: {} }));
   root.querySelector('#project-create-form')?.addEventListener('submit', event => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));
