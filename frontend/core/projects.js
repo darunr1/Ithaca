@@ -42,6 +42,20 @@ function taskCard(task, roster, canEdit) {
     evidence + select + '</article>';
 }
 
+export function projectEditForm(project, canManage) {
+  if (!canManage) return '';
+  return '<details class="project-edit-settings"><summary>Edit project details</summary>' +
+    '<form id="project-edit-form" class="project-form">' +
+    '<label>Name<input name="name" required minlength="3" maxlength="120" value="' + e(project.name) + '"></label>' +
+    '<label>Description<textarea name="description" rows="3" maxlength="3000">' + e(project.description) + '</textarea></label>' +
+    '<div class="project-form-row"><label>Target date<input type="date" name="targetDate" value="' + e(project.targetDate) + '"></label>' +
+    '<label>Status' + statusSelect(project.status, ['active', 'on_hold', 'completed', 'archived'], 'name="status"') + '</label></div>' +
+    '<button type="submit">Save project details</button></form></details>';
+}
+export function projectEditPayload(data) {
+  return { name: data.name, description: data.description, targetDate: data.targetDate || null, status: data.status };
+}
+
 function detailPage(detail, clubs, isOfficer, roster) {
   const { project, milestones, tasks, updates, summary, permissions } = detail;
   const canManage = permissions.canManage;
@@ -88,8 +102,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
     ).join('') + '</div><button type="submit">Save project leads</button></form></details>' : '';
   const newProjectControl = isOfficer ? '<details class="module-panel project-create-more"><summary>Create another project</summary>' +
     projectCreateForm(isOfficer) + '</details>' : '';
-  const projectStatus = canManage ? statusSelect(project.status, ['active', 'on_hold', 'completed', 'archived'],
-    'data-project-status="true"') : '<span class="project-pill">' + e(project.status) + '</span>';
+  const projectStatus = '<span class="project-pill">' + e(project.status.replaceAll('_', ' ')) + '</span>';
 
   return '<div class="module-page module-projects"><header class="module-hero"><div><span class="module-kicker">PROJECTS / CLUB WORKSPACE</span>' +
     '<h1>Keep every project moving.</h1><p>Track responsibilities, milestones, evidence, and decisions together.</p></div></header>' +
@@ -107,7 +120,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
     '<div class="project-progress"><span style="width:' + summary.completionPercent + '%"></span></div>' +
     '<p class="project-muted">Target: ' + formatDate(project.targetDate) + ' · ' +
     (project.leadIds.length ? 'Leads: ' + project.leadIds.map(id => e(rosterMap.get(id)?.name || 'Member')).join(', ') : 'No leads assigned') +
-    '</p></section>' + leadControls + newProjectControl +
+    '</p>' + projectEditForm(project, canManage) + '</section>' + leadControls + newProjectControl +
     '<div class="project-section-heading"><h2>Task board</h2><small>' + statusCount.map(s => s.count + ' ' + labels[s.status]).join(' · ') + '</small></div>' +
     '<div class="project-board">' + board + '</div>' +
     '<div class="project-two-column"><section class="module-panel">' + createTask + '</section>' +
@@ -216,8 +229,11 @@ export function bindProjects(root, rerender) {
     const data = Object.fromEntries(new FormData(event.currentTarget));
     save(() => api(projectPath() + '/updates', { method: 'POST', body: data }), 'Project update recorded.');
   });
-  root.querySelector('[data-project-status]')?.addEventListener('change', event =>
-    save(() => api(projectPath(), { method: 'PATCH', body: { status: event.target.value } }), 'Project status updated.'));
+  root.querySelector('#project-edit-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.currentTarget));
+    save(() => api(projectPath(), { method: 'PATCH', body: projectEditPayload(data) }), 'Project details updated.');
+  });
   root.querySelectorAll('[data-project-task-status]').forEach(select => select.addEventListener('change', event =>
     save(() => api(projectPath() + '/tasks/' + enc(select.dataset.projectTaskStatus), {
       method: 'PATCH', body: { status: event.target.value, expectedVersion: Number(select.dataset.taskVersion) }

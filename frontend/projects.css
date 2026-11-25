@@ -89,3 +89,6 @@
   .module-projects .project-top-row select,
   .module-projects .project-milestone select { background: #17202b; color: #ecf1f6; border-color: #45566b; }
 }
+
+.module-projects .project-edit-settings { margin-top: 1rem; border-top: 1px solid #cbd4df; padding-top: 1rem; }
+.module-projects .project-edit-settings summary { cursor: pointer; font-weight: 650; }
