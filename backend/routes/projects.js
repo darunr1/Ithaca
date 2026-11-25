@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { httpError } from '../services/workspace.js';
 import { withProjectTransaction } from '../services/transactions.js';
+import { requireClubMember } from '../services/authorization.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
@@ -72,21 +73,19 @@ export function projectRoutes({ db, send }) {
   const router = Router();
   async function accessFor(req, session) {
     const clubId = id.parse(req.params.clubId);
-    const actor = await db.collection('members').findOne({ id: req.memberId }, { session });
-    const club = await db.collection('clubs').findOne({ id: clubId }, { session });
-    if (!actor || !club || !actor.clubIds?.includes(clubId)) {
-      throw httpError(404, 'NOT_FOUND', 'Club not found or inaccessible.');
-    }
-    return { clubId, actor, club, isOfficer: club.officerIds?.includes(actor.id) || club.ownerId === actor.id };
+    const { actor, club } = await requireClubMember(req, db, clubId, session);
+    return { clubId, actor, club, isOfficer: Boolean(club.officerIds?.includes(actor.id)) };
   }
   async function projectFor(access, projectId, session) {
     const project = await db.collection('clubProjects').findOne({ id: id.parse(projectId), clubId: access.clubId }, { session });
     if (!project) throw httpError(404, 'NOT_FOUND', 'Project not found or inaccessible.');
     return project;
   }
-  async function memberInClub(memberId, clubId, session) {
+  async function memberInClub(memberId, access, session) {
     if (!memberId) return;
-    if (!(await db.collection('members').findOne({ id: memberId, clubIds: clubId }, { session }))) {
+    if (!(await db.collection('members').findOne({
+      id: memberId, clubIds: access.clubId, universityId: access.club.universityId
+    }, { session }))) {
       throw httpError(422, 'INVALID_ASSIGNEE', 'The selected member does not belong to this club.');
     }
   }
@@ -128,7 +127,7 @@ export function projectRoutes({ db, send }) {
     const access = await accessFor(req, session);
     assertOfficer(access);
     const input = createProject.parse(req.body ?? {});
-    for (const leadId of new Set(input.leadIds)) await memberInClub(leadId, access.clubId, session);
+    for (const leadId of new Set(input.leadIds)) await memberInClub(leadId, access, session);
     const now = new Date().toISOString();
     const project = {
       id: 'project-' + randomUUID(), clubId: access.clubId,
@@ -165,7 +164,7 @@ export function projectRoutes({ db, send }) {
     const patch = requirePatch(editProject.parse(req.body ?? {}));
     if ('leadIds' in patch) {
       assertOfficer(access);
-      for (const leadId of new Set(patch.leadIds)) await memberInClub(leadId, access.clubId, session);
+      for (const leadId of new Set(patch.leadIds)) await memberInClub(leadId, access, session);
       patch.leadIds = [...new Set(patch.leadIds)];
     }
     const result = await db.collection('clubProjects').updateOne({ id: project.id, clubId: access.clubId }, { $set: { ...patch, updatedAt: new Date().toISOString() } }, { session });
@@ -209,7 +208,7 @@ export function projectRoutes({ db, send }) {
       throw httpError(403, 'ASSIGNMENT_NOT_ALLOWED', 'Members may only assign tasks to themselves.');
     }
     const assigneeId = canManage ? input.assigneeId : access.actor.id;
-    await memberInClub(assigneeId, access.clubId, session);
+    await memberInClub(assigneeId, access, session);
     await milestoneInProject(input.milestoneId, access, project, session);
     const now = new Date().toISOString();
     const task = { id: 'task-' + randomUUID(), clubId: access.clubId, projectId: project.id,
@@ -236,7 +235,7 @@ export function projectRoutes({ db, send }) {
         throw httpError(403, 'TASK_PERMISSION_REQUIRED', 'Assigned members can update status and evidence only.');
       }
     }
-    if ('assigneeId' in patch) await memberInClub(patch.assigneeId, access.clubId, session);
+    if ('assigneeId' in patch) await memberInClub(patch.assigneeId, access, session);
     if ('milestoneId' in patch) await milestoneInProject(patch.milestoneId, access, project, session);
     const currentVersion = task.version ?? 0;
     if (currentVersion !== expectedVersion) {

@@ -244,6 +244,49 @@ test('project leads can manage tasks, but cannot elevate members to new leads', 
   })).status, 201);
 });
 
+test('project routes deny cross-university stale membership and revoked owner privileges', async t => {
+  const { db, call } = await server(t);
+  const created = await call('alice', '/organizations', {
+    method: 'POST', body: { name: 'Club Permissions Regression' }
+  });
+  assert.equal(created.status, 201);
+  const clubId = created.data.data.club.id;
+  const base = '/organizations/' + clubId + '/projects';
+
+  // Stale club membership cannot cross the university boundary.
+  await db.collection('members').updateOne({ id: 'outsider' }, { $set: { clubIds: [clubId] } });
+  assert.equal((await call('outsider', base)).status, 404);
+  assert.equal((await call('outsider', base, {
+    method: 'POST', body: { name: 'Cross-campus project' }
+  })).status, 404);
+  // Even a valid officer cannot nominate a cross-university project lead.
+  assert.equal((await call('alice', base, {
+    method: 'POST', body: { name: 'Invalid project lead', leadIds: ['outsider'] }
+  })).status, 422);
+  const valid = await call('alice', base, {
+    method: 'POST', body: { name: 'Valid project' }
+  });
+  assert.equal(valid.status, 201);
+  const projectId = valid.data.data.project.id;
+  assert.equal((await call('alice', base + '/' + projectId + '/tasks', {
+    method: 'POST', body: { title: 'Invalid task assignee', assigneeId: 'outsider' }
+  })).status, 422);
+  assert.equal((await call('outsider', base + '/' + projectId)).status, 404);
+
+  // A former owner who remains a member is not a current officer.
+  await db.collection('clubs').updateOne({ id: clubId }, { $set: { officerIds: [] } });
+  assert.equal((await call('alice', base)).status, 200);
+  assert.equal((await call('alice', base, {
+    method: 'POST', body: { name: 'Unauthorized owner project' }
+  })).status, 403);
+  assert.equal((await call('alice', base + '/' + projectId, {
+    method: 'PATCH', body: { name: 'Unauthorized edit' }
+  })).status, 403);
+  const visible = await call('alice', base);
+  assert.equal(visible.status, 200);
+  assert.equal(visible.data.data.projects.length, 1);
+});
+
 test('project collection schemas/indexes exist and demo mode cannot persist real projects', async () => {
   for (const name of ['clubProjects', 'projectMilestones', 'projectTasks', 'projectUpdates', 'projectAuditLogs']) {
     assert.ok(definitions[name], name + ' missing database validation');

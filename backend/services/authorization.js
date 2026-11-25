@@ -6,13 +6,14 @@ const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.t
 
 // A fresh member and club lookup is mandatory for each sensitive operation.
 // userProfiles.clubIds is a UI convenience, never an authorization grant.
-export async function requireClubMember(req, db, clubId) {
+export async function requireClubMember(req, db, clubId, session) {
   const memberId = requireVerifiedMemberId(req);
   if (!validId(clubId)) throw hidden();
-  const [actor, club] = await Promise.all([
-    db.collection('members').findOne({ id: memberId }),
-    db.collection('clubs').findOne({ id: clubId })
-  ]);
+  // Keep authorization reads inside the caller's transaction snapshot.
+  // MongoDB does not support parallel operations on the same transaction session.
+  const options = session ? { session } : undefined;
+  const actor = await db.collection('members').findOne({ id: memberId }, options);
+  const club = await db.collection('clubs').findOne({ id: clubId }, options);
   if (!actor || !club || !actor.clubIds?.includes(clubId) ||
       actor.universityId !== club.universityId ||
       (actor.supabaseUserId && actor.supabaseUserId !== req.authProfile.authProviderUserId)) throw hidden();
