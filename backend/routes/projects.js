@@ -158,12 +158,7 @@ export function projectRoutes({ db, send }) {
       taskScope.assigneeId = access.actor.id;
     } else if (filters.assignee) taskScope.assigneeId = filters.assignee === 'unassigned' ? null : filters.assignee;
     if (filters.q) {
-      const literal = filters.q.replace(/[.*+?^${}()|[\]\\]/g, '\\    const [milestones, tasks, updates] = await Promise.all([
-      db.collection('projectMilestones').find(scope).sort({ createdAt: 1 }).limit(200).toArray(),
-      db.collection('projectTasks').find(scope).sort({ createdAt: -1 }).limit(500).toArray(),
-      db.collection('projectUpdates').find(scope).sort({ createdAt: -1 }).limit(100).toArray()
-    ]);
-    const completed = tasks.filter(task => task.status === 'done').length;');
+      const literal = Array.from(filters.q, char => '.*+?^${}()|[]'.includes(char) || char.charCodeAt(0) === 92 ? String.fromCharCode(92) + char : char).join('');
       const regex = new RegExp(literal, 'i');
       taskScope.$or = [{ title: regex }, { description: regex }];
     }
