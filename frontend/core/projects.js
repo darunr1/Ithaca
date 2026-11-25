@@ -28,7 +28,27 @@ function samplePage() {
     '<p>A fictional example of how a club could organize task ownership and progress.</p><div class="project-board">' + cards + '</div></section></div>';
 }
 
-function taskCard(task, roster, canEdit) {
+export function taskDetailsForm(task, roster, milestones, canManage, actorId) {
+  if (!canManage && task.assigneeId !== actorId) return '';
+  const selectedOptions = (rows, value, label) => option('', label, !value) +
+    rows.map(row => option(row.id, row.name || row.title, row.id === value)).join('') +
+    (value && !rows.some(row => row.id === value) ? option(value, 'Current (unavailable)', true) : '');
+  return '<details><summary>Edit task details: ' + e(task.title) + '</summary>' +
+    '<form class="project-form" data-task-details="' + e(task.id) + '" data-task-version="' + e(task.version ?? 0) + '" data-can-manage="' + canManage + '">' +
+    (canManage ? '<label>Description<textarea name="description" rows="3" maxlength="3000">' + e(task.description) + '</textarea></label>' +
+      '<label>Assignee<select name="assigneeId">' + selectedOptions([...roster.values()], task.assigneeId, 'Unassigned') + '</select></label>' +
+      '<label>Milestone<select name="milestoneId">' + selectedOptions(milestones, task.milestoneId, 'No milestone') + '</select></label>' +
+      '<label>Deadline<input type="date" name="dueDate" value="' + e(task.dueDate) + '"></label>' : '') +
+    '<label>Evidence URL<input type="url" name="evidenceUrl" pattern="https?://.+" maxlength="1000" value="' + e(task.evidenceUrl) + '"></label>' +
+    '<button type="submit">Save task details</button></form></details>';
+}
+export function taskEditPayload(data, canManage, version) {
+  return { expectedVersion: Number(version), evidenceUrl: data.evidenceUrl || null,
+    ...(canManage ? { description: data.description, assigneeId: data.assigneeId || null,
+      milestoneId: data.milestoneId || null, dueDate: data.dueDate || null } : {}) };
+}
+
+function taskCard(task, roster, canEdit, milestones) {
   const member = roster.get(task.assigneeId);
   const editable = canEdit || task.assigneeId === state.actorId;
   const select = editable
@@ -39,7 +59,7 @@ function taskCard(task, roster, canEdit) {
   return '<article class="project-task"><strong>' + e(task.title) + '</strong>' +
     (task.description ? '<p>' + e(task.description) + '</p>' : '') +
     '<small>' + e(member?.name || (task.assigneeId ? 'Member' : 'Unassigned')) + ' · ' + formatDate(task.dueDate) + '</small>' +
-    evidence + select + '</article>';
+    evidence + select + taskDetailsForm(task, roster, milestones, canEdit, state.actorId) + '</article>';
 }
 
 export function projectEditForm(project, canManage) {
@@ -64,7 +84,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
   const statusCount = statuses.map(status => ({ status, count: tasks.filter(task => task.status === status).length }));
   const board = statuses.map(status => '<section class="project-lane"><h3>' + e(labels[status]) + ' <span>' +
     tasks.filter(task => task.status === status).length + '</span></h3>' +
-    (tasks.filter(task => task.status === status).map(task => taskCard(task, rosterMap, canManage)).join('') || empty('No tasks')) + '</section>').join('');
+    (tasks.filter(task => task.status === status).map(task => taskCard(task, rosterMap, canManage, milestones)).join('') || empty('No tasks')) + '</section>').join('');
 
   const createTask = '<form id="project-task-form" class="project-form"><h3>Add a task</h3>' +
     '<label>Task title<input name="title" minlength="3" maxlength="150" required placeholder="e.g. Test the CAN telemetry parser"></label>' +
@@ -234,6 +254,13 @@ export function bindProjects(root, rerender) {
     const data = Object.fromEntries(new FormData(event.currentTarget));
     save(() => api(projectPath(), { method: 'PATCH', body: projectEditPayload(data) }), 'Project details updated.');
   });
+  root.querySelectorAll('[data-task-details]').forEach(form => form.addEventListener('submit', event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    save(() => api(projectPath() + '/tasks/' + enc(form.dataset.taskDetails), {
+      method: 'PATCH', body: taskEditPayload(data, form.dataset.canManage === 'true', form.dataset.taskVersion)
+    }), 'Task details updated.');
+  }));
   root.querySelectorAll('[data-project-task-status]').forEach(select => select.addEventListener('change', event =>
     save(() => api(projectPath() + '/tasks/' + enc(select.dataset.projectTaskStatus), {
       method: 'PATCH', body: { status: event.target.value, expectedVersion: Number(select.dataset.taskVersion) }
