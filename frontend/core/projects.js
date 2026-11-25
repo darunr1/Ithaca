@@ -52,7 +52,7 @@ function taskCard(task, roster, canEdit, milestones) {
   const member = roster.get(task.assigneeId);
   const editable = canEdit || task.assigneeId === state.actorId;
   const select = editable
-    ? statusSelect(task.status, statuses, 'data-project-task-status="' + e(task.id) + '" data-task-version="' + e(task.version) + '"')
+    ? statusSelect(task.status, statuses, 'aria-label="Status for ' + e(task.title) + '" data-project-task-status="' + e(task.id) + '" data-task-version="' + e(task.version) + '"')
     : '<span class="project-pill project-' + e(task.status) + '">' + e(labels[task.status]) + '</span>';
   const evidence = task.evidenceUrl
     ? '<a href="' + e(task.evidenceUrl) + '" target="_blank" rel="noopener noreferrer">View evidence</a>' : '';
@@ -83,7 +83,7 @@ export function taskFilterQuery(filters) {
   return query.toString();
 }
 function pageControls(key, page) {
-  if (!page) return '';
+  if (!page || (page.previousOffset === null && page.nextOffset === null)) return '';
   return '<nav aria-label="' + e(key) + ' pagination" class="project-page-controls">' +
     (page.previousOffset !== null ? '<button type="button" data-page-key="' + e(key) + '" data-offset="' + page.previousOffset + '">Previous ' + e(key) + '</button> ' : '') +
     (page.nextOffset !== null ? '<button type="button" data-page-key="' + e(key) + '" data-offset="' + page.nextOffset + '">Next ' + e(key) + '</button>' : '') + '</nav>';
@@ -122,7 +122,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
 
   const milestoneRows = milestones.map(m => '<div class="project-milestone"><div><strong>' + e(m.title) + '</strong><small>' +
     formatDate(m.dueDate) + '</small></div>' +
-    (canManage ? statusSelect(m.status, ['planned', 'in_progress', 'done'], 'data-project-milestone-status="' + e(m.id) + '"')
+    (canManage ? statusSelect(m.status, ['planned', 'in_progress', 'done'], 'aria-label="Status for milestone ' + e(m.title) + '" data-project-milestone-status="' + e(m.id) + '"')
       : '<span class="project-pill">' + e(m.status) + '</span>') + '</div>').join('') || empty('No milestones yet.');
 
   const milestoneForm = canManage ? '<form id="project-milestone-form" class="project-form">' +
@@ -167,6 +167,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
     '</p>' + projectEditForm(project, canManage) + '</section>' + leadControls + newProjectControl +
     '<div class="project-section-heading"><h2>Task board</h2><small>' + statusCount.map(s => s.count + ' ' + labels[s.status]).join(' · ') + '</small></div>' +
     filterForm(roster) + '<p class="project-muted">Showing ' + tasks.length + ' of ' + summary.totalTasks + ' project tasks</p>' +
+    (!tasks.length ? '<p role="status">' + e(projectEmptyMessage(Boolean(state.filters.q || state.filters.status || state.filters.assignee || state.filters.mine === 'true'))) + '</p>' : '') +
     '<div class="project-board">' + board + '</div>' + pageControls('tasks', pagination?.tasks) +
     '<div class="project-two-column"><section class="module-panel">' + createTask + '</section>' +
     '<section class="module-panel"><h2>Milestones</h2>' + milestoneRows + pageControls('milestones', pagination?.milestones) + milestoneForm + '</section></div>' +
@@ -190,10 +191,25 @@ function clubPicker(clubs) {
   return clubs.length > 1 ? '<div class="module-context"><label for="projects-club-picker">Club</label><select id="projects-club-picker">' +
     clubs.map(club => option(club.id, club.name, club.id === state.clubId)).join('') + '</select></div>' : '';
 }
+export function projectFeedbackMarkup(value = '') {
+  return '<p id="project-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" class="project-feedback">' + e(value) + '</p>' +
+    '<p id="project-error" role="alert" aria-atomic="true" tabindex="-1" class="project-error"></p>';
+}
 function flash() {
   const value = state.flash;
   state.flash = '';
-  return '<p id="project-status" role="status" class="project-feedback">' + e(value || '') + '</p>';
+  return projectFeedbackMarkup(value || '');
+}
+export function projectEmptyMessage(hasFilters) {
+  return hasFilters ? 'No tasks match these filters. Clear filters to see more work.' : 'No tasks yet. Add a task to get started.';
+}
+export async function runProjectSave(operation, { pending, success, failure }) {
+  pending(true);
+  try { await operation(); }
+  catch (error) { pending(false); failure(error); return false; }
+  pending(false);
+  await success();
+  return true;
 }
 
 export async function renderProjects(input = {}) {
@@ -229,17 +245,36 @@ export async function renderProjects(input = {}) {
 }
 
 export function bindProjects(root, rerender) {
-  const feedback = message => {
-    const status = root.querySelector('#project-status');
-    if (status) status.textContent = message;
-  };
-  const save = async (operation, message) => {
-    feedback('Saving…');
-    try { await operation(); rerender({ flash: message }); }
-    catch (error) {
-      if (error.code === 'TASK_CHANGED') rerender({ flash: 'Task changed elsewhere. Latest board loaded; review and retry.' });
-      else feedback(error.message || 'Unable to save changes.');
-    }
+  const status = root.querySelector('#project-status');
+  const alert = root.querySelector('#project-error');
+  const active = () => Boolean(status && root.querySelector('#project-status') === status);
+  if (status?.textContent) status.focus();
+  const feedback = message => { if (active()) status.textContent = message; };
+  let saving = false;
+  const save = async (operation, message, restore) => {
+    if (saving) return;
+    const trigger = root.ownerDocument.activeElement;
+    const controls = [...root.querySelectorAll('.module-projects button, .module-projects input, .module-projects textarea, .module-projects select')].filter(control => !control.disabled);
+    await runProjectSave(operation, {
+      pending(value) {
+        saving = value;
+        if (!active()) return;
+        for (const control of controls) control.disabled = value;
+        if (value) { alert.textContent = ''; feedback('Saving…'); }
+      },
+      async success() { if (active()) await rerender({ flash: message }); },
+      failure(error) {
+        if (!active()) return;
+        if (error.code === 'TASK_CHANGED') {
+          rerender({ flash: 'Task changed elsewhere. Latest board loaded; review and retry.' });
+          return;
+        }
+        restore?.();
+        feedback('');
+        alert.textContent = error.message || 'Unable to save changes.';
+        if (trigger?.isConnected) trigger.focus();
+      }
+    });
   };
   root.querySelector('#projects-club-picker')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
   root.querySelector('#project-picker')?.addEventListener('change', event => rerender({ projectId: event.target.value }));
@@ -303,14 +338,24 @@ export function bindProjects(root, rerender) {
       method: 'PATCH', body: taskEditPayload(data, form.dataset.canManage === 'true', form.dataset.taskVersion)
     }), 'Task details updated.');
   }));
-  root.querySelectorAll('[data-project-task-status]').forEach(select => select.addEventListener('change', event =>
-    save(() => api(projectPath() + '/tasks/' + enc(select.dataset.projectTaskStatus), {
-      method: 'PATCH', body: { status: event.target.value, expectedVersion: Number(select.dataset.taskVersion) }
-    }), 'Task status updated.')));
-  root.querySelectorAll('[data-project-milestone-status]').forEach(select => select.addEventListener('change', event =>
-    save(() => api(projectPath() + '/milestones/' + enc(select.dataset.projectMilestoneStatus), {
-      method: 'PATCH', body: { status: event.target.value }
-    }), 'Milestone updated.')));
+  root.querySelectorAll('[data-project-task-status]').forEach(select => {
+    const original = select.value;
+    select.addEventListener('change', event => {
+      const value = event.target.value;
+      save(() => api(projectPath() + '/tasks/' + enc(select.dataset.projectTaskStatus), {
+        method: 'PATCH', body: { status: value, expectedVersion: Number(select.dataset.taskVersion) }
+      }), 'Task status updated.', () => { select.value = original; });
+    });
+  });
+  root.querySelectorAll('[data-project-milestone-status]').forEach(select => {
+    const original = select.value;
+    select.addEventListener('change', event => {
+      const value = event.target.value;
+      save(() => api(projectPath() + '/milestones/' + enc(select.dataset.projectMilestoneStatus), {
+        method: 'PATCH', body: { status: value }
+      }), 'Milestone updated.', () => { select.value = original; });
+    });
+  });
   root.querySelector('#project-handoff')?.addEventListener('click', async () => {
     try {
       feedback('Preparing handoff…');

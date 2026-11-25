@@ -92,3 +92,23 @@
 
 .module-projects .project-edit-settings { margin-top: 1rem; border-top: 1px solid #cbd4df; padding-top: 1rem; }
 .module-projects .project-edit-settings summary { cursor: pointer; font-weight: 650; }
+
+/* Keyboard and narrow-screen project controls. */
+.module-projects :is(button, input, select, textarea, summary, a):focus-visible { outline: 3px solid #387bd0; outline-offset: 3px; }
+.module-projects .project-error { color: #a52a36; font-weight: 600; overflow-wrap: anywhere; }
+.module-projects .project-error:empty { margin: 0; }
+.module-projects .project-page-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .8rem; }
+.module-projects .project-form input[type="checkbox"] { width: auto; min-height: 0; }
+.module-projects .project-form .project-lead-option { display: flex; align-items: center; }
+.module-projects .project-lane, .module-projects .project-task, .module-projects .project-form { min-width: 0; }
+.module-projects :is(button, summary) { min-height: 44px; }
+.module-projects summary { cursor: pointer; }
+.module-projects button:disabled { opacity: .65; cursor: wait; }
+@media (max-width: 650px) {
+  .module-projects .project-board { overflow-x: visible; }
+  .module-projects .project-milestone, .module-projects .project-top-row { align-items: stretch; flex-direction: column; }
+  .module-projects .project-milestone select { max-width: none; width: 100%; }
+  .module-projects .project-form button, .module-projects .project-top-row button { max-width: 100%; }
+  .module-projects .project-stats > div { padding: .65rem; overflow-wrap: anywhere; }
+}
+@media (prefers-color-scheme: dark) { .module-projects .project-error { color: #ffb3b8; } .module-projects .project-feedback { color: #91dfbb; } }
