@@ -1,0 +1,3 @@
+# Workspace pagination
+
+GET club projects accepts offset/limit (default 200). GET project detail accepts taskOffset/taskLimit (500), updateOffset/updateLimit (100), milestoneOffset/milestoneLimit (200). Each collection returns offset, limit, hasMore, nextOffset, previousOffset. Ordering uses an ID tiebreaker, offsets are stable for unchanged data; concurrent inserts/edits can shift pages. Filters reset task offset. Board controls navigate each collection separately; milestone choices reflect the current milestone page. Summary is whole-project. Handoff is complete up to 5000 records per section, otherwise an explicit 413. All reads remain club scoped.

@@ -1,7 +1,7 @@
 import { api } from '../shared/api.js';
 import { e } from '../shared/ui.js';
 
-const state = { clubId: '', projectId: '', flash: '', filters: {} };
+const state = { clubId: '', projectId: '', flash: '', filters: {}, projectOffset: 0, pages: {} };
 const statuses = ['todo', 'in_progress', 'blocked', 'done'];
 const labels = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' };
 const enc = encodeURIComponent;
@@ -82,6 +82,12 @@ export function taskFilterQuery(filters) {
   if (filters.mine === 'true') query.delete('assignee');
   return query.toString();
 }
+function pageControls(key, page) {
+  if (!page) return '';
+  return '<nav aria-label="' + e(key) + ' pagination" class="project-page-controls">' +
+    (page.previousOffset !== null ? '<button type="button" data-page-key="' + e(key) + '" data-offset="' + page.previousOffset + '">Previous ' + e(key) + '</button> ' : '') +
+    (page.nextOffset !== null ? '<button type="button" data-page-key="' + e(key) + '" data-offset="' + page.nextOffset + '">Next ' + e(key) + '</button>' : '') + '</nav>';
+}
 function filterForm(roster) {
   const f = state.filters;
   return '<form id="project-filter-form" class="project-form"><div class="project-form-row">' +
@@ -95,7 +101,7 @@ function filterForm(roster) {
     '<div><button type="submit">Apply filters</button> <button type="button" id="project-clear-filters" class="secondary">Clear filters</button></div></form>';
 }
 function detailPage(detail, clubs, isOfficer, roster) {
-  const { project, milestones, tasks, updates, summary, permissions } = detail;
+  const { project, milestones, tasks, updates, summary, permissions, pagination } = detail;
   const canManage = permissions.canManage;
   state.actorId = permissions.actorId;
   const rosterMap = new Map(roster.map(member => [member.id, member]));
@@ -146,7 +152,7 @@ function detailPage(detail, clubs, isOfficer, roster) {
     '<h1>Keep every project moving.</h1><p>Track responsibilities, milestones, evidence, and decisions together.</p></div></header>' +
     clubPicker(clubs) + flash() +
     '<div class="project-top-row"><label for="project-picker">Project<select id="project-picker">' +
-    state.projectList.map(item => option(item.id, item.name, item.id === project.id)).join('') + '</select></label>' +
+    state.projectList.map(item => option(item.id, item.name, item.id === project.id)).join('') + '</select></label>' + pageControls('projects', state.projectPagination) +
     '<button type="button" id="project-handoff" class="secondary">Export handoff (.md)</button></div>' +
     '<section class="module-panel"><div class="module-panel-head"><div><span>PROJECT OVERVIEW</span><h2>' + e(project.name) + '</h2></div>' + projectStatus +
     '</div><p>' + e(project.description || 'No project description yet.') + '</p>' +
@@ -161,11 +167,11 @@ function detailPage(detail, clubs, isOfficer, roster) {
     '</p>' + projectEditForm(project, canManage) + '</section>' + leadControls + newProjectControl +
     '<div class="project-section-heading"><h2>Task board</h2><small>' + statusCount.map(s => s.count + ' ' + labels[s.status]).join(' · ') + '</small></div>' +
     filterForm(roster) + '<p class="project-muted">Showing ' + tasks.length + ' of ' + summary.totalTasks + ' project tasks</p>' +
-    '<div class="project-board">' + board + '</div>' +
+    '<div class="project-board">' + board + '</div>' + pageControls('tasks', pagination?.tasks) +
     '<div class="project-two-column"><section class="module-panel">' + createTask + '</section>' +
-    '<section class="module-panel"><h2>Milestones</h2>' + milestoneRows + milestoneForm + '</section></div>' +
+    '<section class="module-panel"><h2>Milestones</h2>' + milestoneRows + pageControls('milestones', pagination?.milestones) + milestoneForm + '</section></div>' +
     '<section class="module-panel"><div class="module-panel-head"><div><span>DECISIONS / PROGRESS / BLOCKERS</span><h2>Project history</h2></div></div>' +
-    '<div class="project-update-list">' + updateRows + '</div>' + updateForm + '</section>' +
+    '<div class="project-update-list">' + updateRows + '</div>' + pageControls('updates', pagination?.updates) + updateForm + '</section>' +
     '<p class="module-disclaimer">This workspace contains your real club records. Updates are attributed to authenticated members. Completion is calculated from task status, not an AI estimate.</p>' +
     '</div>';
 }
@@ -192,9 +198,11 @@ function flash() {
 
 export async function renderProjects(input = {}) {
   if (input && typeof input === 'object') {
-    if (typeof input.clubId === 'string') { state.clubId = input.clubId; state.projectId = ''; state.filters = {}; }
-    if (typeof input.projectId === 'string' && input.projectId !== state.projectId) { state.projectId = input.projectId; state.filters = {}; }
-    if (input.filters) state.filters = input.filters;
+    if (typeof input.clubId === 'string') { state.clubId = input.clubId; state.projectId = ''; state.filters = {}; state.projectOffset = 0; state.pages = {}; }
+    if (typeof input.projectId === 'string' && input.projectId !== state.projectId) { state.projectId = input.projectId; state.filters = {}; state.pages = {}; }
+    if (input.filters) { state.filters = input.filters; state.pages.taskOffset = 0; }
+    if (Number.isInteger(input.projectOffset)) { state.projectOffset = input.projectOffset; state.projectId = ''; state.pages = {}; state.filters = {}; }
+    if (input.pages) state.pages = { ...state.pages, ...input.pages };
     if (typeof input.flash === 'string') state.flash = input.flash;
   }
   const [{ data: me }, { data: clubs }] = await Promise.all([api('/auth/me'), api('/clubs')]);
@@ -203,7 +211,8 @@ export async function renderProjects(input = {}) {
   if (!clubs.some(club => club.id === state.clubId)) state.clubId = clubs[0].id;
   const club = clubs.find(item => item.id === state.clubId);
   const isOfficer = club.officerIds.includes(me.profile.internalMemberId);
-  const { data: list } = await api(path());
+  const { data: list } = await api(path() + '?offset=' + state.projectOffset);
+  state.projectPagination = list.pagination;
   state.projectList = list.projects;
   if (!list.projects.some(project => project.id === state.projectId)) state.projectId = list.projects[0]?.id || '';
   const picker = clubPicker(clubs);
@@ -211,10 +220,10 @@ export async function renderProjects(input = {}) {
 
   if (!state.projectId) return '<div class="module-page module-projects"><header class="module-hero"><div><span class="module-kicker">PROJECTS</span><h1>Build together. Remember everything.</h1><p>Projects bring tasks, progress and decisions into one shared workspace.</p></div></header>' +
     picker + flash() + '<section class="module-panel"><h2>No projects yet</h2><p>Club officers can create your first project here.</p>' +
-    createForm + '</section></div>';
+    pageControls('projects', state.projectPagination) + createForm + '</section></div>';
 
   const [{ data: detail }, { data: roster }] = await Promise.all([
-    api(projectPath() + '?' + taskFilterQuery(state.filters)), api('/clubs/' + enc(state.clubId) + '/roster')
+    api(projectPath() + '?' + new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(taskFilterQuery(state.filters))), ...state.pages })), api('/clubs/' + enc(state.clubId) + '/roster')
   ]);
   return detailPage(detail, clubs, isOfficer, roster);
 }
@@ -234,6 +243,12 @@ export function bindProjects(root, rerender) {
   };
   root.querySelector('#projects-club-picker')?.addEventListener('change', event => rerender({ clubId: event.target.value }));
   root.querySelector('#project-picker')?.addEventListener('change', event => rerender({ projectId: event.target.value }));
+  root.querySelectorAll('[data-page-key]').forEach(button => button.addEventListener('click', () => {
+    const offset = Number(button.dataset.offset);
+    const key = button.dataset.pageKey;
+    if (key === 'projects') rerender({ projectOffset: offset });
+    else rerender({ pages: { [{tasks:'taskOffset',updates:'updateOffset',milestones:'milestoneOffset'}[key]]: offset } });
+  }));
   root.querySelector('#project-filter-form')?.addEventListener('submit', event => {
     event.preventDefault();
     const filters = Object.fromEntries(new FormData(event.currentTarget));

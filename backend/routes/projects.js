@@ -13,10 +13,16 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
 const text = (min, max) => z.string().trim().min(min).max(max);
 const projectStatus = z.enum(['active', 'on_hold', 'completed', 'archived']);
 const taskStatus = z.enum(['todo', 'in_progress', 'blocked', 'done']);
+const offset = z.string().regex(/^\d{1,9}$/).transform(Number).pipe(z.number().int().min(0).max(1000000));
+const limit = max => z.string().regex(/^\d{1,4}$/).transform(Number).pipe(z.number().int().min(1).max(max));
+const listPaging = z.object({ offset: offset.optional(), limit: limit(200).optional() }).strict();
 const taskFilters = z.object({
   mine: z.enum(['true', 'false']).optional(), status: taskStatus.optional(),
   assignee: z.union([id, z.literal('unassigned')]).optional(),
-  q: z.string().trim().max(120).optional(), sort: z.enum(['newest', 'oldest', 'title']).default('newest')
+  q: z.string().trim().max(120).optional(), sort: z.enum(['newest', 'oldest', 'title']).default('newest'),
+  taskOffset: offset.optional(), taskLimit: limit(500).optional(),
+  updateOffset: offset.optional(), updateLimit: limit(100).optional(),
+  milestoneOffset: offset.optional(), milestoneLimit: limit(200).optional()
 }).strict();
 const taskSorts = { newest: { createdAt: -1, id: 1 }, oldest: { createdAt: 1, id: 1 }, title: { title: 1, id: 1 } };
 const milestoneStatus = z.enum(['planned', 'in_progress', 'done']);
@@ -57,6 +63,14 @@ const createUpdate = z.object({
   content: text(5, 3000)
 }).strict();
 
+async function page(collection, scope, sort, start, size) {
+  const rows = await collection.find(scope).sort(sort).skip(start).limit(size + 1).toArray();
+  const hasMore = rows.length > size;
+  return { rows: rows.slice(0, size), pagination: {
+    offset: start, limit: size, hasMore,
+    nextOffset: hasMore ? start + size : null, previousOffset: start ? Math.max(0, start - size) : null
+  } };
+}
 const clean = ({ _id, ...rest }) => rest;
 const newest = rows => rows.map(clean);
 const cleanTask = task => clean({ ...task, version: task.version ?? 0 });
@@ -125,8 +139,10 @@ export function projectRoutes({ db, send }) {
 
   router.get('/:clubId/projects', async (req, res) => {
     const access = await accessFor(req);
-    const rows = await db.collection('clubProjects').find({ clubId: access.clubId }).sort({ updatedAt: -1 }).limit(200).toArray();
-    send(res, { projects: newest(rows) });
+    const query = listPaging.parse(req.query);
+    const result = await page(db.collection('clubProjects'), { clubId: access.clubId },
+      { createdAt: -1, id: 1 }, query.offset ?? 0, query.limit ?? 200);
+    send(res, { projects: newest(result.rows), pagination: result.pagination });
   });
 
   router.post('/:clubId/projects', mutate(async (req, session) => {
@@ -163,15 +179,16 @@ export function projectRoutes({ db, send }) {
       taskScope.$or = [{ title: regex }, { description: regex }];
     }
     const taskCollection = db.collection('projectTasks');
-    const [milestones, tasks, updates, total, completed, blocked] = await Promise.all([
-      db.collection('projectMilestones').find(scope).sort({ createdAt: 1, id: 1 }).limit(200).toArray(),
-      taskCollection.find(taskScope).sort(taskSorts[filters.sort]).limit(500).toArray(),
-      db.collection('projectUpdates').find(scope).sort({ createdAt: -1, id: 1 }).limit(100).toArray(),
+    const [milestonePage, taskPage, updatePage, total, completed, blocked] = await Promise.all([
+      page(db.collection('projectMilestones'), scope, { createdAt: 1, id: 1 }, filters.milestoneOffset ?? 0, filters.milestoneLimit ?? 200),
+      page(taskCollection, taskScope, taskSorts[filters.sort], filters.taskOffset ?? 0, filters.taskLimit ?? 500),
+      page(db.collection('projectUpdates'), scope, { createdAt: -1, id: 1 }, filters.updateOffset ?? 0, filters.updateLimit ?? 100),
       taskCollection.countDocuments(scope), taskCollection.countDocuments({ ...scope, status: 'done' }),
       taskCollection.countDocuments({ ...scope, status: 'blocked' })
     ]);
     send(res, {
-      project: clean(project), milestones: newest(milestones), tasks: tasks.map(cleanTask), updates: newest(updates),
+      project: clean(project), milestones: newest(milestonePage.rows), tasks: taskPage.rows.map(cleanTask), updates: newest(updatePage.rows),
+      pagination: { milestones: milestonePage.pagination, tasks: taskPage.pagination, updates: updatePage.pagination },
       summary: { totalTasks: total, completedTasks: completed, blockedTasks: blocked,
         completionPercent: total ? Math.round(100 * completed / total) : 0 },
       permissions: { canManage: access.isOfficer || (project.leadIds || []).includes(access.actor.id), actorId: access.actor.id }
@@ -292,11 +309,16 @@ export function projectRoutes({ db, send }) {
     const access = await accessFor(req);
     const project = await projectFor(access, req.params.projectId);
     const scope = { clubId: access.clubId, projectId: project.id };
+    // The export is complete or explicitly rejected, never silently truncated.
+    const exportLimit = 5000;
     const [milestones, tasks, updates] = await Promise.all([
-      db.collection('projectMilestones').find(scope).sort({ createdAt: 1 }).limit(200).toArray(),
-      db.collection('projectTasks').find(scope).sort({ createdAt: 1 }).limit(500).toArray(),
-      db.collection('projectUpdates').find(scope).sort({ createdAt: -1 }).limit(100).toArray()
+      db.collection('projectMilestones').find(scope).sort({ createdAt: 1, id: 1 }).limit(exportLimit + 1).toArray(),
+      db.collection('projectTasks').find(scope).sort({ createdAt: 1, id: 1 }).limit(exportLimit + 1).toArray(),
+      db.collection('projectUpdates').find(scope).sort({ createdAt: -1, id: 1 }).limit(exportLimit + 1).toArray()
     ]);
+    if ([milestones, tasks, updates].some(rows => rows.length > exportLimit)) {
+      throw httpError(413, 'HANDOFF_TOO_LARGE', 'Handoff exceeds 5000 records in a section; use the paginated workspace.');
+    }
     const safe = value => String(value || '').replace(/[\r\n]+/g, ' ').trim();
     const lines = ['# ' + safe(project.name), '', safe(project.description), '', 'Status: ' + project.status,
       'Target date: ' + (project.targetDate || 'Not set'), '', '## Milestones', ''];

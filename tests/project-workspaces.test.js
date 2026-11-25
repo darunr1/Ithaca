@@ -42,6 +42,7 @@ function database() {
           });
           return this;
         },
+        skip(value) { found = found.slice(value); return this; },
         limit(value) { found = found.slice(0, value); return this; },
         async toArray() { return structuredClone(found); }
       };
@@ -457,4 +458,31 @@ test('task filters are scoped, validated, literal and preserve whole-project sum
   assert.equal((await call('alice',path+'?status=invalid')).status,400);
   assert.equal((await call('alice',path+'?mine=true&assignee=alice')).status,400);
   assert.equal((await call('outsider',path+'?mine=true')).status,404);
+});
+
+test('project and detail pagination has stable non-overlapping pages and full totals', async t => {
+  const { db, call } = await server(t);
+  const club = await call('alice','/organizations',{method:'POST',body:{name:'Pagination Club'}});
+  const clubId = club.data.data.club.id;
+  const base = '/organizations/' + clubId + '/projects';
+  for (const id of ['p3','p1','p2']) await db.collection('clubProjects').insertOne({id,clubId,name:id,createdAt:'2027-01-01',leadIds:[]});
+  const first = (await call('alice',base+'?limit=2')).data.data;
+  const next = (await call('alice',base+'?limit=2&offset='+first.pagination.nextOffset)).data.data;
+  assert.deepEqual(first.projects.map(p=>p.id),['p1','p2']);
+  assert.deepEqual(next.projects.map(p=>p.id),['p3']);
+  assert.equal(next.pagination.hasMore,false);
+  const path=base+'/p1';
+  for (const id of ['t3','t1','t2']) await db.collection('projectTasks').insertOne({id,clubId,projectId:'p1',title:id,createdAt:'2027-01-01',status:'done'});
+  for (const id of ['u2','u1']) await db.collection('projectUpdates').insertOne({id,clubId,projectId:'p1',createdAt:'2027-01-01',type:'progress',content:id});
+  const detail=(await call('alice',path+'?taskLimit=2&updateLimit=1')).data.data;
+  assert.deepEqual(detail.tasks.map(t=>t.id),['t1','t2']);
+  assert.equal(detail.pagination.tasks.nextOffset,2);
+  assert.equal(detail.summary.totalTasks,3);
+  const second=(await call('alice',path+'?taskLimit=2&taskOffset=2&updateLimit=1&updateOffset=1')).data.data;
+  assert.deepEqual(second.tasks.map(t=>t.id),['t3']);
+  assert.deepEqual(second.updates.map(u=>u.id),['u2']);
+  assert.equal(second.pagination.tasks.nextOffset,null);
+  assert.equal((await call('alice',base+'?limit=0')).status,400);
+  assert.equal((await call('alice',path+'?taskOffset=-1')).status,400);
+  assert.equal((await call('outsider',path+'?taskLimit=1')).status,404);
 });
