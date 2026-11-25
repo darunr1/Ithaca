@@ -40,11 +40,23 @@ async function projectServer(t) {
     await db.createCollection(name, { validator: definitions[name] });
     await db.collection(name).createIndex({ id: 1 }, { unique: true });
   }
-  await db.collection('members').insertOne({ id: 'alice', clubIds: ['club'] });
-  await db.collection('clubs').insertOne({ id: 'club', ownerId: 'alice', officerIds: ['alice'] });
+  await db.collection('members').insertOne({
+    id: 'alice', clubIds: ['club'], universityId: 'uni-a', supabaseUserId: 'alice'
+  });
+  await db.collection('clubs').insertOne({
+    id: 'club', ownerId: 'alice', officerIds: ['alice'], universityId: 'uni-a'
+  });
   const app = express();
   app.use(express.json());
-  app.use((req, res, next) => { req.memberId = 'alice'; next(); });
+  // This isolated HTTP fixture mounts the router directly, so supply the same
+  // verified identity fields as the production Supabase middleware.
+  app.use((req, res, next) => {
+    req.memberId = 'alice';
+    req.authProfile = {
+      authProvider: 'supabase', authProviderUserId: 'alice', internalMemberId: 'alice'
+    };
+    next();
+  });
   app.use(projectRoutes({ db, send: (res, data) => res.json({ data }) }));
   app.use((error, req, res, next) => res.status(error.status || 500).json({ error: { code: error.code } }));
   const server = app.listen(0, '127.0.0.1');
